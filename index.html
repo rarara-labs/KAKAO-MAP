@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>무선국 위치 지도</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; }
+    #header {
+      background: linear-gradient(135deg, #1a237e, #3949ab);
+      color: white; padding: 12px 16px;
+      display: flex; align-items: center; gap: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size: 17px; font-weight: bold; }
+    #count-badge {
+      margin-left: auto; background: rgba(255,255,255,0.2);
+      border-radius: 12px; padding: 3px 10px; font-size: 12px;
+    }
+    #toolbar {
+      background: white; padding: 10px 12px;
+      display: flex; gap: 8px; align-items: center;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    #search-input {
+      flex: 1; padding: 8px 14px;
+      border: 1.5px solid #c5cae9; border-radius: 20px;
+      font-size: 14px; outline: none;
+    }
+    #search-input:focus { border-color: #3949ab; }
+    #btn-fit {
+      background: #3949ab; color: white; border: none;
+      border-radius: 16px; padding: 8px 14px;
+      font-size: 13px; cursor: pointer; white-space: nowrap;
+    }
+    #status-bar {
+      background: #fff8e1; border-bottom: 1px solid #ffe082;
+      padding: 5px 14px; font-size: 12px; color: #795548;
+      display: flex; align-items: center; gap: 8px;
+    }
+    #progress-bar-wrap {
+      flex: 1; background: #ffe082;
+      border-radius: 4px; height: 5px; overflow: hidden;
+    }
+    #progress-bar { height: 100%; background: #f9a825; width: 0%; transition: width 0.2s; }
+    #app-container { display: flex; height: calc(100vh - 122px); }
+    #map { flex: 1; height: 100%; }
+    #side-panel {
+      width: 300px; background: white;
+      border-left: 1px solid #e0e0e0;
+      overflow-y: auto; display: flex; flex-direction: column;
+    }
+    .side-header {
+      padding: 10px 14px; background: #e8eaf6;
+      font-size: 12px; font-weight: bold; color: #3949ab;
+      position: sticky; top: 0; z-index: 1;
+    }
+    .side-item {
+      padding: 10px 14px; border-bottom: 1px solid #f0f0f0;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .side-item:hover { background: #e8eaf6; }
+    .si-name { font-size: 13px; font-weight: bold; color: #1a237e; }
+    .si-addr { font-size: 11px; color: #888; margin-top: 2px; }
+    @media (max-width: 767px) {
+      #side-panel { display: none; }
+      #app-container { display: block; }
+      #map { height: calc(100vh - 122px); width: 100%; }
+    }
+    .iw-wrap { padding: 12px 14px; min-width: 220px; max-width: 270px; font-family: 'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    .iw-name { font-size: 13px; font-weight: bold; color: #1a237e; margin-bottom: 5px; line-height: 1.4; word-break: break-all; }
+    .iw-addr { font-size: 12px; color: #555; margin-bottom: 10px; line-height: 1.4; }
+    .iw-btns { display: flex; gap: 6px; }
+    .iw-btn { flex: 1; padding: 7px 4px; border-radius: 6px; font-size: 12px; font-weight: bold; text-decoration: none; text-align: center; display: block; }
+    .iw-btn-nav { background: #FFCD00; color: #333; }
+    .iw-btn-view { background: #1a237e; color: white; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <span style="font-size:20px">📡</span>
+  <h1>무선국 위치 지도</h1>
+  <div id="count-badge">로딩 중...</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="호출명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="status-bar">
+  <span id="status-text">📡 지도 준비 중...</span>
+  <div id="progress-bar-wrap"><div id="progress-bar"></div></div>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (0)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+
+<script>
+// ── 무선국 데이터 (매주 update_stations.py 실행 후 index.html 교체) ──
+var STATIONS = [
+  {"name":"공동망_SKG(K)경전_진주옥산2터널AAU_1_2","address":"경상남도 진주시 문산읍 두산리 335-2","origAddr":"진주시 문산읍 두산리 335-2 나대지"},
+  {"name":"SKL진주상문LRRU0M","address":"경상남도 진주시 문산읍 상문리 산233","origAddr":"진주시 문산읍 상문리 산233 장군대산 방송 송신소 인근"},
+  {"name":"SKL진주문산3LRU0T","address":"경상남도 진주시 문산읍 상문리 산347-7번지","origAddr":"진주시 문산읍 상문리 산347-7번지"},
+  {"name":"공동망_SKG진주문산휴게소AAU_1_3","address":"경상남도 진주시 문산읍 소문리 957-1","origAddr":"진주시 문산읍 소문리 957-1 나대지"},
+  {"name":"SKL진주상대13LRRU_F3","address":"경상남도 진주시 상대동 195-27","origAddr":"진주시 상대동 195-27 (상대동)"},
+  {"name":"SKG진주상대13AAU1_2","address":"경상남도 진주시 상대동 195-27","origAddr":"진주시 상대동 195-27 일반"},
+  {"name":"SKG진주상대(기)AAU1_2","address":"경상남도 진주시 상대동 201-11","origAddr":"진주시 상대동 201-11 일반"},
+  {"name":"SKL진주상대LRU0_F3","address":"경상남도 진주시 상대동 201-11","origAddr":"진주시 상대동 201-11 일반"},
+  {"name":"SKL진주상대LRRU1_F1","address":"경상남도 진주시 상대동 201-11","origAddr":"진주시 상대동 201-11 일반"},
+  {"name":"SKL진주상대LRU1_F3","address":"경상남도 진주시 상대동 201-11","origAddr":"진주시 상대동 201-11 일반"},
+  {"name":"SKG진주오경빌딩AAU1_2","address":"경상남도 진주시 상대동 334-4","origAddr":"진주시 상대동 334-4, 오경빌딩 (상대동)"},
+  {"name":"SKL진주오경빌딩LRRU_F3","address":"경상남도 진주시 상대동 334-4","origAddr":"진주시 상대동 334-4, 오경빌딩 (상대동)"},
+  {"name":"SKG진주모덕체육공원AAU1_2","address":"경상남도 진주시 상대동 산32-4","origAddr":"진주시 상대동 산32-4 나대지"},
+  {"name":"SKL진주상평19LRRU_FW3","address":"경상남도 진주시 상평동 200-3","origAddr":"진주시 상평동 200-3 일반"},
+  {"name":"SK진주상대3LRRU1_FW","address":"경상남도 진주시 상평동 223-5","origAddr":"진주시 상평동 223-5, 일반 (상평동)"},
+  {"name":"SKL진주상대3LRRU1_FW2","address":"경상남도 진주시 상평동 223-5","origAddr":"진주시 상평동 223-5, 일반 (상평동)"},
+  {"name":"SKL진주상대3LRRU1_FW3","address":"경상남도 진주시 상평동 223-5","origAddr":"진주시 상평동 223-5, 일반 (상평동)"},
+  {"name":"SKG진주장대2AAU1_2","address":"경상남도 진주시 장대동 107-27","origAddr":"진주시 장대동 107-27 일반"},
+  {"name":"SKG진주초전3PRU1_2","address":"경상남도 진주시 장재동 225","origAddr":"진주시 장재동 225 나대지"},
+  {"name":"SKG진주장재2AAU1_2","address":"경상남도 진주시 장재동 284-4","origAddr":"진주시 장재동 284-4 나대지"},
+  {"name":"SKG진주초전힐스테이트AAU1_2","address":"경상남도 진주시 장재동 372","origAddr":"진주시 장재동 372 나대지"},
+  {"name":"SKG진주장재5AAU1_2","address":"경상남도 진주시 장재동 385-11","origAddr":"진주시 장재동 385-11 나대지"},
+  {"name":"SKL진주장재LRRU0_F3","address":"경상남도 진주시 장재동 417-2","origAddr":"진주시 장재동 417-2, (장재동)"},
+  {"name":"SKG진주장재(기)AAU1_2","address":"경상남도 진주시 장재동 417-2","origAddr":"진주시 장재동 417-2, 진주예술고등학교 (장재동)"},
+  {"name":"SKG진주장재삼거리AAU1_2","address":"경상남도 진주시 장재동 431-4","origAddr":"진주시 장재동 431-4 나대지"},
+  {"name":"SKG진주정오자동차AAU1_2","address":"경상남도 진주시 장재동 60","origAddr":"진주시 장재동 60 나대지"},
+  {"name":"SKG진주초원빌딩AAU1_2","address":"경상남도 진주시 초전동 1076-6","origAddr":"진주시 초전동 1076-6 일반"},
+  {"name":"SKG진주금산교사거리AAU1_2","address":"경상남도 진주시 초전동 1583-11","origAddr":"진주시 초전동 1583-11 나대지"},
+  {"name":"SKG진주초전4_1AAU1_2","address":"경상남도 진주시 초전동 1583-23","origAddr":"진주시 초전동 1583-23 초전공원 인근 나대지"},
+  {"name":"SKG진주초전힐스테이트정문AAU_1","address":"경상남도 진주시 초전동 1728","origAddr":"진주시 초전동 1728 나대지"},
+  {"name":"SKG진주초전6AAU1_2","address":"경상남도 진주시 초전동 64-1","origAddr":"진주시 초전동 64-1 나대지"},
+  {"name":"SKL진주초전6LRRU_F3","address":"경상남도 진주시 초전동 64-1","origAddr":"진주시 초전동 64-1 나대지"},
+  {"name":"SKL진주초전3LRRU0_F3","address":"경상남도 진주시 초전동 산49-4","origAddr":"진주시 초전동 산 49-4 일반"},
+  {"name":"SKG진주초전3(기)AAU1_2","address":"경상남도 진주시 초전동 산49-4","origAddr":"진주시 초전동 산49-4 나대지"},
+  {"name":"SKG진주충무공동위너골프AAU1_2","address":"경상남도 진주시 충무공동 167-27","origAddr":"진주시 충무공동 167-27, 위너골프 (충무공동)"},
+  {"name":"SKL진주충무공동위너골프LRRU_FW2","address":"경상남도 진주시 충무공동 167-27","origAddr":"진주시 충무공동 167-27, 위너골프 (충무공동)"},
+  {"name":"SKL진주충무공동위너골프LRRU_FW3","address":"경상남도 진주시 충무공동 167-27","origAddr":"진주시 충무공동 167-27, 위너골프 (충무공동)"},
+  {"name":"SKG진주칠암교회IB_PRU_1","address":"경상남도 진주시 충무공동 277-5","origAddr":"진주시 충무공동 277-5 칠암교회"},
+  {"name":"SKL진주아슬란D동LRRU_F2","address":"경상남도 진주시 충무공동 277-7","origAddr":"진주시 충무공동 277-7 아슬란몰D동"},
+  {"name":"SKL진주아슬란D동LRRU_F3","address":"경상남도 진주시 충무공동 277-7","origAddr":"진주시 충무공동 277-7 아슬란몰D동"},
+  {"name":"SKG진주아슬란D동AAU_1","address":"경상남도 진주시 충무공동 277-7","origAddr":"진주시 충무공동 277-7, 아슬란몰 D동 (충무공동)"},
+  {"name":"SKL진주아슬란스포츠몰IB_GIRO_F2","address":"경상남도 진주시 충무공동 277-7","origAddr":"진주시 충무공동 277-7 진주아슬란스포츠몰"},
+  {"name":"SKL진주아슬란스포츠몰IB_GIRO_F3","address":"경상남도 진주시 충무공동 277-7","origAddr":"진주시 충무공동 277-7 진주아슬란스포츠몰"},
+  {"name":"SK진주아슬란스포츠몰IB_WGIRO","address":"경상남도 진주시 충무공동 277-7","origAddr":"진주시 충무공동 277-7 진주아슬란스포츠몰"},
+  {"name":"SKG진주아슬란스포츠몰IB_GIRO_1_2","address":"경상남도 진주시 충무공동 277-7","origAddr":"진주시 충무공동 277-7, 진주아슬란스포츠몰 (충무공동)"},
+  {"name":"SKL진주충무공동3LTROM","address":"경상남도 진주시 충무공동 316","origAddr":"진주시 충무공동 316"},
+  {"name":"SK진주충무공동3WTRO","address":"경상남도 진주시 충무공동 316","origAddr":"진주시 충무공동 316"},
+  {"name":"SKL진주충무공동3LTRO","address":"경상남도 진주시 충무공동 316","origAddr":"진주시 충무공동 316 나대지"},
+  {"name":"SKG진주롯데몰IB_PRU_1_8","address":"경상남도 진주시 충무공동 35","origAddr":"진주시 충무공동 35, 진주롯데몰 (충무공동)"},
+  {"name":"SK진주리버타워IB_LRRU_FW","address":"경상남도 진주시 충무공동 38-2","origAddr":"진주시 충무공동 38-2 진주리버타운"},
+  {"name":"SKL진주리버타워IB_LRRU_FW2","address":"경상남도 진주시 충무공동 38-2","origAddr":"진주시 충무공동 38-2 진주리버타운"},
+  {"name":"SKL진주리버타워IB_LRRU_FW3","address":"경상남도 진주시 충무공동 38-2","origAddr":"진주시 충무공동 38-2 진주리버타운"},
+  {"name":"SKL진주충무공동한일병원IB_LIRO_F1","address":"경상남도 진주시 충무공동 69-1","origAddr":"진주시 충무공동 69-1 진주충무공동한일병원"},
+  {"name":"SKL진주충무공동한일병원IB_LIRO_F2","address":"경상남도 진주시 충무공동 69-1","origAddr":"진주시 충무공동 69-1 진주충무공동한일병원"},
+  {"name":"SKL진주충무공동한일병원IB_LIRO_F3","address":"경상남도 진주시 충무공동 69-1","origAddr":"진주시 충무공동 69-1 진주충무공동한일병원"},
+  {"name":"SK진주충무공동한일병원IB_WIRO","address":"경상남도 진주시 충무공동 69-1","origAddr":"진주시 충무공동 69-1 진주충무공동한일병원"},
+  {"name":"SKG진주충무공동한일병원IB_PRU_1","address":"경상남도 진주시 충무공동 69-1","origAddr":"진주시 충무공동 69-1 진주충무공동한일병원"},
+  {"name":"SKL진주윙스타워IB_GIRO_F2","address":"경상남도 진주시 충무공동 69-3","origAddr":"진주시 충무공동 69-3 진주윙스타워"},
+  {"name":"SKL진주윙스타워IB_GIRO_F3","address":"경상남도 진주시 충무공동 69-3","origAddr":"진주시 충무공동 69-3 진주윙스타워"},
+  {"name":"SK진주윙스타워IB_WGIRO","address":"경상남도 진주시 충무공동 69-3","origAddr":"진주시 충무공동 69-3 진주윙스타워"},
+  {"name":"SKG진주윙스타워IB_GIRO_1_2","address":"경상남도 진주시 충무공동 69-3","origAddr":"진주시 충무공동 69-3 진주윙스타워"},
+  {"name":"SKG진주윙스타워C동AAU1_2","address":"경상남도 진주시 충무공동 69-3","origAddr":"진주시 충무공동 69-3, C동 (충무공동, 윙스타워)"},
+  {"name":"SKG진주하대10PRU1_2","address":"경상남도 진주시 하대동 592-2","origAddr":"진주시 하대동 592-2 일반"},
+  {"name":"SKL진주하대11LMERO","address":"경상남도 진주시 하대동 704","origAddr":"진주시 하대동 704"},
+  {"name":"SK진주하대11WMERO","address":"경상남도 진주시 하대동 704","origAddr":"진주시 하대동 704"},
+  {"name":"SKG진주하대11PRUAAU1_2","address":"경상남도 진주시 하대동 704","origAddr":"진주시 하대동 704 나대지"},
+  {"name":"SKG진주하대3AAU1_2","address":"경상남도 진주시 하대동 732-60","origAddr":"진주시 하대동 732-60 나대지"},
+  {"name":"SKG진주하촌AAU1_2","address":"경상남도 진주시 하촌동 507-3","origAddr":"진주시 하촌동 507-3 나대지"},
+  {"name":"SKG진주장재3AAU1_2","address":"경상남도 진주시 하촌동 80-14","origAddr":"진주시 하촌동 80-14 나대지"},
+  {"name":"SKG진주하촌3AAU1_2","address":"경상남도 진주시 하촌동 산118-2","origAddr":"진주시 하촌동 산118-2 나대지"},
+  {"name":"SK진주하촌3LRRU_FW","address":"경상남도 진주시 하촌동 산118-2","origAddr":"진주시 하촌동 산118-2 나대지"},
+  {"name":"SKL진주하촌3LRRU_FW2","address":"경상남도 진주시 하촌동 산118-2","origAddr":"진주시 하촌동 산118-2 나대지"},
+  {"name":"SKL진주하촌3LRRU_FW3","address":"경상남도 진주시 하촌동 산118-2","origAddr":"진주시 하촌동 산118-2 나대지"}
+];
+
+var map, geocoder, activeInfowindow = null;
+var allMarkers = [], geocodeDone = 0, geocodeFailed = 0;
+
+function setStatus(msg) { document.getElementById('status-text').textContent = msg; }
+
+function initMap() {
+  try {
+    setStatus('🗺️ 지도 생성 중...');
+    map = new kakao.maps.Map(document.getElementById('map'), {
+      center: new kakao.maps.LatLng(35.1796, 128.1076), level: 9
+    });
+    map.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);
+    map.addControl(new kakao.maps.MapTypeControl(), kakao.maps.ControlPosition.TOPRIGHT);
+    kakao.maps.event.addListener(map, 'click', function() {
+      if (activeInfowindow) { activeInfowindow.close(); activeInfowindow = null; }
+    });
+    geocoder = new kakao.maps.services.Geocoder();
+    setStatus('📍 위치 변환 시작... 총 ' + STATIONS.length + '개');
+    geocodeAll(STATIONS);
+  } catch(e) {
+    setStatus('❌ 지도 오류: ' + e.message + ' → 카카오 개발자 콘솔에서 도메인 저장 확인 필요');
+  }
+}
+
+function geocodeAll(stations) {
+  var total = stations.length;
+  var iw = new kakao.maps.InfoWindow({ zIndex: 1 });
+  function next(i) {
+    if (i >= total) return;
+    var s = stations[i];
+    geocoder.addressSearch(s.address, function(result, status) {
+      if (status === kakao.maps.services.Status.OK) {
+        var pos = new kakao.maps.LatLng(result[0].y, result[0].x);
+        var marker = new kakao.maps.Marker({ position: pos, map: map, title: s.name });
+        var entry = { marker: marker, station: s, lat: result[0].y, lng: result[0].x, visible: true };
+        allMarkers.push(entry);
+        kakao.maps.event.addListener(marker, 'click', (function(e) {
+          return function() { showInfo(e, iw); };
+        })(entry));
+      } else { geocodeFailed++; }
+
+      geocodeDone++;
+      document.getElementById('progress-bar').style.width = Math.round(geocodeDone/total*100) + '%';
+      setStatus('📍 위치 변환 중... ' + geocodeDone + ' / ' + total);
+
+      if (geocodeDone === total) {
+        document.getElementById('progress-bar').style.background = '#66bb6a';
+        setStatus('✅ ' + allMarkers.length + '개 위치 표시 완료' +
+          (geocodeFailed > 0 ? ' (변환 실패 ' + geocodeFailed + '개)' : ''));
+        document.getElementById('count-badge').textContent = allMarkers.length + '개';
+        renderSideList(allMarkers);
+        fitAll();
+      }
+      setTimeout(function() { next(i+1); }, 80);
+    });
+  }
+  next(0);
+}
+
+function showInfo(entry, iw) {
+  if (activeInfowindow) activeInfowindow.close();
+  var enc = encodeURIComponent(entry.station.name);
+  iw.setContent(
+    '<div class="iw-wrap">' +
+    '<div class="iw-name">📡 ' + entry.station.name + '</div>' +
+    '<div class="iw-addr">📌 ' + entry.station.origAddr + '</div>' +
+    '<div class="iw-btns">' +
+    '<a class="iw-btn iw-btn-nav" href="https://map.kakao.com/link/to/' + enc + ',' + entry.lat + ',' + entry.lng + '" target="_blank">🚗 경로안내</a>' +
+    '<a class="iw-btn iw-btn-view" href="https://map.kakao.com/link/map/' + enc + ',' + entry.lat + ',' + entry.lng + '" target="_blank">🗺️ 지도보기</a>' +
+    '</div></div>'
+  );
+  iw.open(map, entry.marker);
+  activeInfowindow = iw;
+  map.panTo(entry.marker.getPosition());
+}
+
+function fitAll() {
+  var v = allMarkers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  var b = new kakao.maps.LatLngBounds();
+  v.forEach(function(e){ b.extend(e.marker.getPosition()); });
+  map.setBounds(b);
+}
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  allMarkers.forEach(function(e) {
+    var m = !kw || e.station.name.toLowerCase().indexOf(kw)>=0 || e.station.origAddr.toLowerCase().indexOf(kw)>=0;
+    e.visible = m; e.marker.setVisible(m);
+  });
+  renderSideList(allMarkers.filter(function(e){ return e.visible; }));
+  if (kw) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var d = document.createElement('div');
+    d.className = 'side-item';
+    d.innerHTML = '<div class="si-name">' + e.station.name + '</div><div class="si-addr">' + e.station.origAddr + '</div>';
+    d.onclick = function() {
+      map.setCenter(e.marker.getPosition()); map.setLevel(4);
+      showInfo(e, new kakao.maps.InfoWindow({zIndex:1}));
+    };
+    sl.appendChild(d);
+  });
+}
+</script>
+
+<script>
+  setTimeout(function() {
+    var el = document.getElementById('status-text');
+    if (el && el.textContent.indexOf('지도 준비') >= 0) {
+      setStatus('❌ SDK 응답 없음 — 도메인 등록 또는 API 키 확인 필요');
+    }
+  }, 10000);
+</script>
+<script type="text/javascript"
+  src="//dapi.kakao.com/v2/maps/sdk.js?appkey=9e477b69128d827b63adc096ddfa5e59&libraries=services"
+  onload="initMap()">
+</script>
+
+</body>
+</html>
