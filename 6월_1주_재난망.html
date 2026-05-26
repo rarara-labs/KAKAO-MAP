@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>6월 1주 재난망 - 무선국 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#1a237e,#3949ab);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:17px; font-weight:bold; flex:1; }
+    #count-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px;
+    }
+    #toolbar {
+      background:white; padding:10px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #c5cae9; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#3949ab; }
+    #btn-fit {
+      background:#3949ab; color:white; border:none;
+      border-radius:16px; padding:8px 14px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 110px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#e8eaf6;
+      font-size:12px; font-weight:bold; color:#3949ab;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+    }
+    .side-item:hover { background:#e8eaf6; }
+    .si-name { font-size:13px; font-weight:bold; color:#1a237e; word-break:break-all; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 110px); width:100%; }
+    }
+    .popup-name { font-size:13px; font-weight:bold; color:#1a237e; margin-bottom:5px; word-break:break-all; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:8px; }
+    .popup-btns { display:flex; gap:6px; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#1a237e; color:white; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:20px">📡</span>
+  <h1>6월 1주 재난망</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;">← 목록</a>
+  <div id="count-badge">32개</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="호출명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (32)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "재난안전_경남_합천대병3-PS-RU", "lat": 35.5485702737035, "lng": 128.025421475934, "origAddr": "경상남도 합천군 대병면 상천리 649-1"}, {"name": "재난안전_경남_합천성리6-PS-RU", "lat": 35.5352391541641, "lng": 128.036597889016, "origAddr": "경상남도 합천군 대병면 성리 1348"}, {"name": "재난안전_경남_합천성리-PS-RU", "lat": 35.5300171458772, "lng": 128.037273707626, "origAddr": "경상남도 합천군 대병면 성리 530-1"}, {"name": "재난안전_경남_합천성리4-PS-RU", "lat": 35.5397345893572, "lng": 128.045817203231, "origAddr": "경상남도 합천군 대병면 성리 산37-3"}, {"name": "재난안전_경남_합천회양-PS-RU", "lat": 35.523534535624, "lng": 128.017345325993, "origAddr": "경상남도 합천군 대병면 회양관광단지길 79-6"}, {"name": "재난안전_경남_합천장전2-PS-RU", "lat": 35.4876601091511, "lng": 128.152912642148, "origAddr": "경상남도 합천군 대양면 도리 산52-5"}, {"name": "재난안전_경남_합천무곡2-PS-RU", "lat": 35.5165847706866, "lng": 128.174519744779, "origAddr": "경상남도 합천군 대양면 무곡리 산159-1"}, {"name": "재난안전_경남_합천백암2-PS-RU", "lat": 35.5041238768505, "lng": 128.219773550985, "origAddr": "경상남도 합천군 대양면 백암리 418-4"}, {"name": "재난안전_경남_합천백암3-PS-RU", "lat": 35.5068530134239, "lng": 128.210693533732, "origAddr": "경상남도 합천군 대양면 백암리 669-4"}, {"name": "재난안전_경남_합천백암-PS-ICS", "lat": 35.5087698304636, "lng": 128.205062749732, "origAddr": "경상남도 합천군 대양면 백암리 산195-2"}, {"name": "재난안전_경남_합천아천2-PS-RU", "lat": 35.530997218665, "lng": 128.174201338273, "origAddr": "경상남도 합천군 대양면 아천리 695-9"}, {"name": "재난안전_경남_합천대양-PS-RU", "lat": 35.5052229130296, "lng": 128.177611526649, "origAddr": "경상남도 합천군 대양면 양산리 산7"}, {"name": "재난안전_경남_합천정양-PS-RU", "lat": 35.5561528240167, "lng": 128.164332705701, "origAddr": "경상남도 합천군 대양면 정양리 104-4"}, {"name": "재난안전_경남_합천가호-PS-RU", "lat": 35.547008934564, "lng": 128.069472569851, "origAddr": "경상남도 합천군 용주면 가호리 산49"}, {"name": "재난안전_경남_합천고품3-PS-RU", "lat": 35.5400206668463, "lng": 128.100687203172, "origAddr": "경상남도 합천군 용주면 고품리 산33-1"}, {"name": "재난안전_경남_합천장전3-PS-RU", "lat": 35.5052988452466, "lng": 128.105197144596, "origAddr": "경상남도 합천군 용주면 공암리 1-1"}, {"name": "재난안전_경남_합천봉기3-PS-RU", "lat": 35.548639888614, "lng": 128.088031740708, "origAddr": "경상남도 합천군 용주면 봉기리 748-151"}, {"name": "재난안전_경남_합천성산3-PS-ICS", "lat": 35.5501288652155, "lng": 128.139493441461, "origAddr": "경상남도 합천군 용주면 성산리 263-2"}, {"name": "재난안전_경남_합천성산3-PS-RU", "lat": 35.5572991777676, "lng": 128.12944401937, "origAddr": "경상남도 합천군 용주면 성산리 807"}, {"name": "재난안전_경남_합천노리-PS-RU", "lat": 35.5256832426033, "lng": 128.120009575444, "origAddr": "경상남도 합천군 용주면 평산리 286-15"}, {"name": "재난안전_경남_합천황계-PS-RU", "lat": 35.5109062145717, "lng": 128.07519644906, "origAddr": "경상남도 합천군 용주면 황계리 11"}, {"name": "재난안전_경남_합천기리-PS-RU", "lat": 35.6246379069378, "lng": 128.22917631393, "origAddr": "경상남도 합천군 율곡면 기리 247"}, {"name": "재난안전_경남_합천율곡-PS-RU", "lat": 35.5781078219135, "lng": 128.223183485354, "origAddr": "경상남도 합천군 율곡면 낙민리 1039"}, {"name": "재난안전_경남_합천낙민5-PS-ICS", "lat": 35.5795981973942, "lng": 128.238624927568, "origAddr": "경상남도 합천군 율곡면 낙민리 583-5"}, {"name": "재난안전_경남_합천두사2-PS-ICS", "lat": 35.5974554762985, "lng": 128.228659544183, "origAddr": "경상남도 합천군 율곡면 두사리 28-1"}, {"name": "재난안전_경남_합천문림2-PS-RU", "lat": 35.5673471935974, "lng": 128.191695336571, "origAddr": "경상남도 합천군 율곡면 문림리 353-14"}, {"name": "재난안전_경남_합천율곡2-PS-RU", "lat": 35.6169596571113, "lng": 128.196729643794, "origAddr": "경상남도 합천군 율곡면 와리 581"}, {"name": "재난안전_경남_합천와리-PS-RU", "lat": 35.63398337017, "lng": 128.205919195034, "origAddr": "경상남도 합천군 율곡면 와리 산37-4"}, {"name": "재난안전_경남_합천율진-PS-RU", "lat": 35.5970440241289, "lng": 128.18722770861, "origAddr": "경상남도 합천군 율곡면 율진리 300-1"}, {"name": "재난안전_경남_합천제내2-PS-RU", "lat": 35.5774145962933, "lng": 128.204336308571, "origAddr": "경상남도 합천군 율곡면 제내리 593-1"}, {"name": "재난안전_경남_합천적중-PS-RU", "lat": 35.5473383504884, "lng": 128.264963618264, "origAddr": "경상남도 합천군 초계면 관평리 344-4"}, {"name": "재난안전_경남_합천대동-PS-RU", "lat": 35.5658520161856, "lng": 128.249331645508, "origAddr": "경상남도 합천군 초계면 대동리 436-8"}];
+var map = L.map('map').setView([35.54888, 128.15278], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+var icon = L.divIcon({
+  className: '',
+  html: '<div style="background:#1a237e;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">📡</div>',
+  iconSize:[26,26], iconAnchor:[13,13], popupAnchor:[0,-14]
+});
+var markers = [];
+STATIONS.forEach(function(s) {
+  var m = L.marker([s.lat, s.lng], {icon: icon}).addTo(map);
+  var enc = encodeURIComponent(s.name);
+  var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+  var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+  var popup =
+    '<div class="popup-name">📡 ' + s.name + '</div>' +
+    '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+    '<div class="popup-btns">' +
+    '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+    '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+    '</div>';
+  m.bindPopup(popup, {maxWidth:270});
+  markers.push({marker:m, station:s, visible:true});
+});
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var m = !kw || e.station.name.toLowerCase().indexOf(kw)>=0 || e.station.origAddr.toLowerCase().indexOf(kw)>=0;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var d = document.createElement('div');
+    d.className = 'side-item';
+    d.innerHTML = '<div class="si-name">' + e.station.name + '</div><div class="si-addr">' + e.station.origAddr + '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>

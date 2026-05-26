@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>무선국 위치 지도</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:#f0f4ff; min-height:100vh; }
+    #header {
+      background: linear-gradient(135deg,#1a237e,#3949ab);
+      color:white; padding:20px 24px;
+      text-align:center;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:22px; font-weight:bold; }
+    #header p { font-size:13px; opacity:0.8; margin-top:4px; }
+    #list {
+      max-width:500px; margin:24px auto; padding:0 16px;
+      display:flex; flex-direction:column; gap:12px;
+    }
+    .week-card {
+      background:white; border-radius:14px;
+      padding:18px 20px;
+      display:flex; align-items:center; gap:16px;
+      text-decoration:none; color:inherit;
+      box-shadow:0 2px 8px rgba(0,0,0,0.08);
+      transition:transform 0.15s, box-shadow 0.15s;
+    }
+    .week-card:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,0.13); }
+    .week-icon { font-size:28px; }
+    .week-name { flex:1; font-size:17px; font-weight:bold; color:#1a237e; }
+    .week-arrow { font-size:18px; color:#3949ab; opacity:0.5; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <div style="font-size:36px;margin-bottom:8px;">📡</div>
+  <h1>무선국 위치 지도</h1>
+  <p>주차를 선택하세요</p>
+</div>
+<div id="list">
+      <a href="./5월_4주.html" class="week-card">
+        <div class="week-icon">📡</div>
+        <div class="week-name">5월 4주</div>
+        <div class="week-arrow">→</div>
+      </a>
+      <a href="./6월_1주.html" class="week-card">
+        <div class="week-icon">📡</div>
+        <div class="week-name">6월 1주</div>
+        <div class="week-arrow">→</div>
+      </a>
+      <a href="./6월_1주_재난망.html" class="week-card">
+        <div class="week-icon">📡</div>
+        <div class="week-name">6월 1주 재난망</div>
+        <div class="week-arrow">→</div>
+      </a>
+</div>
+</body>
+</html>
