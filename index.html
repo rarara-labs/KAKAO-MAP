@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>무선국 위치 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background:#f5f5f5; }
+    #loading-screen {
+      position:fixed; inset:0; background:#1a237e;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      color:white; z-index:9999;
+    }
+    #loading-screen h2 { font-size:20px; margin-bottom:8px; }
+    #loading-msg { font-size:14px; opacity:0.8; margin-bottom:24px; }
+    #progress-bar-wrap {
+      width:260px; background:rgba(255,255,255,0.2);
+      border-radius:20px; height:10px; overflow:hidden;
+    }
+    #progress-bar { height:100%; background:#FFCD00; border-radius:20px; transition:width 0.3s; width:0%; }
+    #progress-text { margin-top:10px; font-size:13px; opacity:0.7; }
+    #header {
+      background: linear-gradient(135deg,#1a237e,#3949ab);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:17px; font-weight:bold; }
+    #count-badge {
+      margin-left:auto; background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px;
+    }
+    #toolbar {
+      background:white; padding:10px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #c5cae9; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#3949ab; }
+    #btn-fit {
+      background:#3949ab; color:white; border:none;
+      border-radius:16px; padding:8px 14px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 110px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#e8eaf6;
+      font-size:12px; font-weight:bold; color:#3949ab;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+    }
+    .side-item:hover { background:#e8eaf6; }
+    .si-name { font-size:13px; font-weight:bold; color:#1a237e; word-break:break-all; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 110px); width:100%; }
+    }
+    .popup-name { font-size:13px; font-weight:bold; color:#1a237e; margin-bottom:5px; word-break:break-all; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:8px; }
+    .popup-btns { display:flex; gap:6px; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#1a237e; color:white; }
+  </style>
+</head>
+<body>
+
+<!-- 로딩 화면 -->
+<div id="loading-screen">
+  <div style="font-size:40px;margin-bottom:12px;">📡</div>
+  <h2>무선국 위치 지도</h2>
+  <div id="loading-msg">데이터 불러오는 중...</div>
+  <div id="progress-bar-wrap">
+    <div id="progress-bar"></div>
+  </div>
+  <div id="progress-text"></div>
+</div>
+
+<div id="header">
+  <span style="font-size:20px">📡</span>
+  <h1>무선국 위치 지도</h1>
+  <div id="count-badge" style="display:none"></div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="호출명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var map = L.map('map').setView([35.1800, 128.0900], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+var icon = L.divIcon({
+  className: '',
+  html: '<div style="background:#1a237e;color:white;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">📡</div>',
+  iconSize:[26,26], iconAnchor:[13,13], popupAnchor:[0,-14]
+});
+
+var markers = [];
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function setProgress(done, total, msg) {
+  var pct = total > 0 ? Math.round(done / total * 100) : 0;
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-text').textContent = done + ' / ' + total + ' (' + pct + '%)';
+  if (msg) document.getElementById('loading-msg').textContent = msg;
+}
+
+async function geocodeAddress(addr) {
+  var url = 'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(addr) + '&format=json&limit=1&accept-language=ko';
+  try {
+    var r = await fetch(url, { headers: { 'User-Agent': 'MuSeonGukMap/1.0' } });
+    var data = await r.json();
+    if (data && data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    }
+  } catch(e) {}
+  return null;
+}
+
+async function start() {
+  // stations.json 불러오기
+  setProgress(0, 1, '📂 stations.json 불러오는 중...');
+  var stations;
+  try {
+    var r = await fetch('./stations.json?t=' + Date.now());
+    stations = await r.json();
+  } catch(e) {
+    document.getElementById('loading-msg').textContent = '❌ stations.json 파일을 찾을 수 없어요';
+    return;
+  }
+
+  // localStorage 캐시 불러오기
+  var cache = {};
+  try { cache = JSON.parse(localStorage.getItem('geo_cache') || '{}'); } catch(e) {}
+
+  var results = [];
+  var needGeocode = stations.filter(s => !cache[s.address]);
+  var total = stations.length;
+  var done = 0;
+
+  if (needGeocode.length > 0) {
+    setProgress(0, total, '📍 새 주소 좌표 변환 중... (' + needGeocode.length + '개)');
+  } else {
+    setProgress(0, total, '✅ 캐시에서 좌표 불러오는 중...');
+  }
+
+  for (var i = 0; i < stations.length; i++) {
+    var s = stations[i];
+    var coord = cache[s.address];
+
+    if (!coord) {
+      // 새 주소 → Nominatim으로 변환
+      coord = await geocodeAddress(s.address);
+      if (coord) {
+        cache[s.address] = coord;
+      } else {
+        // 변환 실패 시 진주시 중심 근처로
+        coord = { lat: 35.1800 + (Math.random()-0.5)*0.02, lng: 128.0900 + (Math.random()-0.5)*0.02 };
+      }
+      await sleep(1100); // Nominatim 속도제한 준수
+    }
+
+    results.push({ name: s.name, lat: coord.lat, lng: coord.lng, origAddr: s.origAddr || s.address.replace('경상남도 ','') });
+    done++;
+    setProgress(done, total, needGeocode.length > 0 ? '📍 좌표 변환 중...' : '✅ 불러오는 중...');
+  }
+
+  // 캐시 저장
+  try { localStorage.setItem('geo_cache', JSON.stringify(cache)); } catch(e) {}
+
+  // 지도에 마커 표시
+  initMap(results);
+}
+
+function initMap(results) {
+  // 로딩 화면 숨기기
+  document.getElementById('loading-screen').style.display = 'none';
+  document.getElementById('count-badge').style.display = '';
+  document.getElementById('count-badge').textContent = results.length + '개';
+
+  results.forEach(function(s) {
+    var m = L.marker([s.lat, s.lng], {icon: icon}).addTo(map);
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+    var popup =
+      '<div class="popup-name">📡 ' + s.name + '</div>' +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>';
+    m.bindPopup(popup, {maxWidth:270});
+    markers.push({marker:m, station:s, visible:true});
+  });
+
+  renderSideList(markers);
+  fitAll();
+}
+
+function fitAll() {
+  var visible = markers.filter(function(e){ return e.visible; });
+  if (!visible.length) return;
+  var group = L.featureGroup(visible.map(function(e){ return e.marker; }));
+  map.fitBounds(group.getBounds().pad(0.1));
+}
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var m = !kw || e.station.name.toLowerCase().indexOf(kw) >= 0 || e.station.origAddr.toLowerCase().indexOf(kw) >= 0;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); }
+    else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var d = document.createElement('div');
+    d.className = 'side-item';
+    d.innerHTML = '<div class="si-name">' + e.station.name + '</div><div class="si-addr">' + e.station.origAddr + '</div>';
+    d.onclick = function() {
+      map.setView([e.station.lat, e.station.lng], 17);
+      e.marker.openPopup();
+    };
+    sl.appendChild(d);
+  });
+}
+
+start();
+</script>
+</body>
+</html>
