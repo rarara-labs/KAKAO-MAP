@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>6월 4주 진행중 전자파측정 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#b71c1c,#e53935);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:16px; font-weight:bold; flex:1; }
+    #progress-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px; white-space:nowrap;
+    }
+    #toolbar {
+      background:white; padding:8px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #ffcdd2; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#e53935; }
+    #btn-fit {
+      background:#e53935; color:white; border:none;
+      border-radius:16px; padding:8px 12px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 108px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#ffebee;
+      font-size:12px; font-weight:bold; color:#c62828;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+      display:flex; align-items:flex-start; gap:8px;
+    }
+    .side-item:hover { background:#ffebee; }
+    .side-item.done { background:#f1fdf4; }
+    .si-check { font-size:18px; padding-top:1px; }
+    .si-text { flex:1; }
+    .si-name { font-size:13px; font-weight:bold; color:#b71c1c; word-break:break-all; }
+    .si-name.done { color:#888; text-decoration:line-through; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    .si-note { font-size:11px; color:#e53935; margin-top:3px; font-style:italic; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 108px); width:100%; }
+    }
+    /* 마커 라벨 */
+    .marker-label {
+      background:white; border:1.5px solid #e53935; border-radius:4px;
+      padding:1px 5px; font-size:11px; font-weight:bold; color:#b71c1c;
+      white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,0.2);
+    }
+    /* 팝업 */
+    .popup-name { font-size:14px; font-weight:bold; color:#b71c1c; margin-bottom:4px; word-break:break-all; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:6px; }
+    .popup-note {
+      background:#fff8f8; border-left:3px solid #e53935;
+      padding:6px 8px; font-size:12px; color:#333;
+      border-radius:0 4px 4px 0; margin-bottom:8px;
+      white-space:pre-wrap; word-break:break-all;
+    }
+    .popup-note-empty { font-size:12px; color:#bbb; margin-bottom:8px; font-style:italic; }
+    .popup-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+      cursor:pointer; border:none;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#b71c1c; color:white; }
+    .btn-done { background:#2e7d32; color:white; width:100%; margin-top:4px; }
+    .btn-undone { background:#e0e0e0; color:#555; width:100%; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:18px">📻</span>
+  <h1>6월 4주 진행중 전자파측정</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;white-space:nowrap;">← 목록</a>
+  <div id="progress-badge">완료 0/154</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (154)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "SKL남해오용3LRRU_F1", "lat": 34.864930357187, "lng": 128.048052142969, "origAddr": "남해군 창선면 오용리 산122-1 나대지", "note": ""}, {"name": "SK사천늑도LRRU_FW", "lat": 34.9254052672683, "lng": 128.044434328352, "origAddr": "사천시 늑도동 480 나대지", "note": ""}, {"name": "SKL사천늑도LRRU_FW2", "lat": 34.9254052672683, "lng": 128.044434328352, "origAddr": "사천시 늑도동 480 나대지", "note": ""}, {"name": "SKL사천늑도LRRU_FW3", "lat": 34.9254052672683, "lng": 128.044434328352, "origAddr": "사천시 늑도동 480 나대지", "note": ""}, {"name": "SK사천대방LRRU FW", "lat": 34.9315132302935, "lng": 128.056389340128, "origAddr": "사천시 대방동 327-1 대방새마을금고", "note": ""}, {"name": "SK사천대방LRRU_FW", "lat": 34.9352031946379, "lng": 128.057563664327, "origAddr": "사천시 대방동 48-1 나대지", "note": ""}, {"name": "SKL사천대방LRRU_FW2", "lat": 34.9352031946379, "lng": 128.057563664327, "origAddr": "사천시 대방동 48-1 나대지", "note": ""}, {"name": "SKL사천대방LRRU_FW3", "lat": 34.9352031946379, "lng": 128.057563664327, "origAddr": "사천시 대방동 48-1 나대지", "note": ""}, {"name": "SK사천대방2LRRU_FW", "lat": 34.9346422725348, "lng": 128.048320867497, "origAddr": "사천시 대방동 615 나대지", "note": ""}, {"name": "SKL사천대방2LRRU_FW2", "lat": 34.9346422725348, "lng": 128.048320867497, "origAddr": "사천시 대방동 615 나대지", "note": ""}, {"name": "SKL사천대방2LRRU_FW3", "lat": 34.9346422725348, "lng": 128.048320867497, "origAddr": "사천시 대방동 615 나대지", "note": ""}, {"name": "SK사천대방LRRU0_FW", "lat": 34.9305712195483, "lng": 128.062159974616, "origAddr": "사천시 대방동 765-2 동양수산", "note": ""}, {"name": "SKL사천대방LRRU0_FW2", "lat": 34.9305712195483, "lng": 128.062159974616, "origAddr": "사천시 대방동 765-2 동양수산", "note": ""}, {"name": "SKL사천대방LRRU0_FW3", "lat": 34.9305712195483, "lng": 128.062159974616, "origAddr": "사천시 대방동 765-2 동양수산", "note": ""}, {"name": "SK사천대방LRRU1_FW", "lat": 34.9305712195483, "lng": 128.062159974616, "origAddr": "사천시 대방동 765-2 동양수산", "note": ""}, {"name": "SKL사천대방LRRU1_FW2", "lat": 34.9305712195483, "lng": 128.062159974616, "origAddr": "사천시 대방동 765-2 동양수산", "note": ""}, {"name": "SKL사천대방LRRU1_FW3", "lat": 34.9305712195483, "lng": 128.062159974616, "origAddr": "사천시 대방동 765-2 동양수산", "note": ""}, {"name": "SK사천동금LRRU_FW", "lat": 34.9311087334476, "lng": 128.079863162633, "origAddr": "사천시 동금동 247-1 서울복집", "note": ""}, {"name": "SKL사천동금LRRU_FW2", "lat": 34.9311087334476, "lng": 128.079863162633, "origAddr": "사천시 동금동 247-1 서울복집", "note": ""}, {"name": "SKL사천동금LRRU_FW3", "lat": 34.9311087334476, "lng": 128.079863162633, "origAddr": "사천시 동금동 247-1 서울복집", "note": ""}, {"name": "SK사천동금2LRRU_FW", "lat": 34.9308069584811, "lng": 128.076013877478, "origAddr": "사천시 동금동 329-10 2K짐", "note": ""}, {"name": "SKL사천동금2LRRU_FW2", "lat": 34.9308069584811, "lng": 128.076013877478, "origAddr": "사천시 동금동 329-10 2K짐", "note": ""}, {"name": "SKL사천동금2LRRU_FW3", "lat": 34.9308069584811, "lng": 128.076013877478, "origAddr": "사천시 동금동 329-10 2K짐", "note": ""}, {"name": "SK사천동금3LRRU_FW", "lat": 34.9318341375621, "lng": 128.08378962358, "origAddr": "사천시 동금동 43-10 세진오피스텔", "note": ""}, {"name": "SK사천동동3LRRU_FW", "lat": 34.9285306225822, "lng": 128.071353466263, "origAddr": "사천시 동동 173-28 제일약국", "note": ""}, {"name": "SKL사천동동3LRRU_FW3", "lat": 34.9285306225822, "lng": 128.071353466263, "origAddr": "사천시 동동 173-28 제일약국", "note": ""}, {"name": "SK사천동동LRRU_FW", "lat": 34.9296157839065, "lng": 128.068913644792, "origAddr": "사천시 동동 239-1", "note": ""}, {"name": "SKL사천동동LRRU_FW2", "lat": 34.9296157839065, "lng": 128.068913644792, "origAddr": "사천시 동동 239-1", "note": ""}, {"name": "SKL사천동동LRRU_FW3", "lat": 34.9296157839065, "lng": 128.068913644792, "origAddr": "사천시 동동 239-1", "note": ""}, {"name": "SK사천문화예술회관LRRU_FW", "lat": 34.9398451022719, "lng": 128.075487120518, "origAddr": "사천시 동림동 190 사천시문화예술회관", "note": ""}, {"name": "SKL사천문화예술회관LRRU_FW2", "lat": 34.9398451022719, "lng": 128.075487120518, "origAddr": "사천시 동림동 190 사천시문화예술회관", "note": ""}, {"name": "SKL사천문화예술회관LRRU_FW3", "lat": 34.9398451022719, "lng": 128.075487120518, "origAddr": "사천시 동림동 190 사천시문화예술회관", "note": ""}, {"name": "SK사천삼보아파트LRRU_FW", "lat": 34.9433589192128, "lng": 128.076326705502, "origAddr": "사천시 동림동 85 동림동삼보아파트", "note": ""}, {"name": "SKL사천삼보아파트LRRU_FW3", "lat": 34.9433589192128, "lng": 128.076326705502, "origAddr": "사천시 동림동 85 동림동삼보아파트", "note": ""}, {"name": "SKT사천동금5_1LRRU_FW", "lat": 34.9417993403016, "lng": 128.083312249835, "origAddr": "사천시 벌리동 132-15 드림독서실", "note": ""}, {"name": "SKT사천벌리드림독서실LRRU_FW", "lat": 34.9417993403016, "lng": 128.083312249835, "origAddr": "사천시 벌리동 132-15 드림독서실", "note": ""}, {"name": "SK사천벌리8LRRU_FW", "lat": 34.9409791913342, "lng": 128.08241496355, "origAddr": "사천시 벌리동 184 나대지", "note": ""}, {"name": "SKL사천벌리8LRRU_FW2", "lat": 34.9409791913342, "lng": 128.08241496355, "origAddr": "사천시 벌리동 184 나대지", "note": ""}, {"name": "SKL사천벌리8LRRU_FW3", "lat": 34.9409791913342, "lng": 128.08241496355, "origAddr": "사천시 벌리동 184 나대지", "note": ""}, {"name": "SK사천벌리7LRRU_FW", "lat": 34.9445813526538, "lng": 128.078801214639, "origAddr": "사천시 벌리동 21-28 한도건설", "note": ""}, {"name": "SKL사천벌리7LRRU_FW2", "lat": 34.9445813526538, "lng": 128.078801214639, "origAddr": "사천시 벌리동 21-28 한도건설", "note": ""}, {"name": "SKL사천벌리7LRRU_FW3", "lat": 34.9445813526538, "lng": 128.078801214639, "origAddr": "사천시 벌리동 21-28 한도건설", "note": ""}, {"name": "SK사천벌리2LRRU_FW", "lat": 34.9399380736314, "lng": 128.088133408807, "origAddr": "사천시 벌리동 259 벌리주공2단지", "note": ""}, {"name": "SK사천벌리3LRRU_FW", "lat": 34.9370083764662, "lng": 128.085825977141, "origAddr": "사천시 벌리동 267-1 대성독서실", "note": ""}, {"name": "SK사천벌리LRRU_FW", "lat": 34.9389116504166, "lng": 128.089137125422, "origAddr": "사천시 벌리동 369-4 중앙독서실", "note": ""}, {"name": "SK사천벌리3LRRU0_FW", "lat": 34.9353416098266, "lng": 128.083232910041, "origAddr": "사천시 벌리동 427-2 일반", "note": ""}, {"name": "SK사천벌리4LRRU_FW", "lat": 34.9387695720588, "lng": 128.081209724958, "origAddr": "사천시 벌리동 453-6 지역사회봉사심벌회", "note": ""}, {"name": "SK사천벌리2LRRU0_FW", "lat": 34.9427578649572, "lng": 128.080980327641, "origAddr": "사천시 벌리동 46-8 가구월드백화점", "note": ""}, {"name": "SK사천벌리2LRRU1_FW", "lat": 34.9427578649572, "lng": 128.080980327641, "origAddr": "사천시 벌리동 46-8 가구월드백화점", "note": ""}, {"name": "SK사천벌리LRRU0_FW", "lat": 34.9368581094287, "lng": 128.079121239658, "origAddr": "사천시 벌리동 480-1 늘푸른산부인과", "note": ""}, {"name": "SK사천벌리LRRU2_FW", "lat": 34.9368581094287, "lng": 128.079121239658, "origAddr": "사천시 벌리동 480-1 늘푸른산부인과", "note": ""}, {"name": "SK사천벌리11LRRU_FW", "lat": 34.9416030580819, "lng": 128.07845703352, "origAddr": "사천시 벌리동 55-1 일반", "note": ""}, {"name": "SKL사천벌리11LRRU_FW2", "lat": 34.9416030580819, "lng": 128.07845703352, "origAddr": "사천시 벌리동 55-1 일반", "note": ""}, {"name": "SKL사천벌리11LRRU_FW3", "lat": 34.9416030580819, "lng": 128.07845703352, "origAddr": "사천시 벌리동 55-1 일반", "note": ""}, {"name": "SK사천서금2LRRU_FW", "lat": 34.9242949317585, "lng": 128.072704764713, "origAddr": "사천시 서금동 123-2 성창수산", "note": ""}, {"name": "SKL사천서금2LRRU_FW2", "lat": 34.9242949317585, "lng": 128.072704764713, "origAddr": "사천시 서금동 123-2 성창수산", "note": ""}, {"name": "SKL사천서금2LRRU_FW3", "lat": 34.9242949317585, "lng": 128.072704764713, "origAddr": "사천시 서금동 123-2 성창수산", "note": ""}, {"name": "SK사천서금3LRRU_FW", "lat": 34.9250851180812, "lng": 128.074828166203, "origAddr": "사천시 서금동 143-1 크로바모텔", "note": ""}, {"name": "SKL사천서금3LRRU_FW2", "lat": 34.9250851180812, "lng": 128.074828166203, "origAddr": "사천시 서금동 143-1 크로바모텔", "note": ""}, {"name": "SKL사천서금3LRRU_FW3", "lat": 34.9250851180812, "lng": 128.074828166203, "origAddr": "사천시 서금동 143-1 크로바모텔", "note": ""}, {"name": "SK사천서동2LRRU_FW", "lat": 34.9269750844356, "lng": 128.0678527409, "origAddr": "사천시 서동 322-61 활어회센타", "note": ""}, {"name": "SKL사천서동2LRRU_FW2", "lat": 34.9269750844356, "lng": 128.0678527409, "origAddr": "사천시 서동 322-61 활어회센타", "note": ""}, {"name": "SKL사천서동2LRRU_FW3", "lat": 34.9269750844356, "lng": 128.0678527409, "origAddr": "사천시 서동 322-61 활어회센타", "note": ""}, {"name": "SK사천서동3LRRU_FW", "lat": 34.93142075542, "lng": 128.064206939003, "origAddr": "사천시 서동 68-1 항구기기공구철물", "note": ""}, {"name": "SKL사천서동3LRRU_FW2", "lat": 34.93142075542, "lng": 128.064206939003, "origAddr": "사천시 서동 68-1 항구기기공구철물", "note": ""}, {"name": "SKL사천서동3LRRU_FW3", "lat": 34.93142075542, "lng": 128.064206939003, "origAddr": "사천시 서동 68-1 항구기기공구철물", "note": ""}, {"name": "SK사천선구2LRRU_FW", "lat": 34.9290457304422, "lng": 128.074079910358, "origAddr": "사천시 선구동 18-435 일반", "note": ""}, {"name": "SKL사천선구2LRRU_FW2", "lat": 34.9290457304422, "lng": 128.074079910358, "origAddr": "사천시 선구동 18-435 일반", "note": ""}, {"name": "SKL사천선구2LRRU_FW3", "lat": 34.9290457304422, "lng": 128.074079910358, "origAddr": "사천시 선구동 18-435 일반", "note": ""}, {"name": "SK사천비룡각산타운LRRU_FW", "lat": 34.934056343243, "lng": 128.072439467958, "origAddr": "사천시 선구동 263-5 비룡각산타운", "note": ""}, {"name": "SKL사천비룡각산타운LRRU_FW3", "lat": 34.934056343243, "lng": 128.072439467958, "origAddr": "사천시 선구동 263-5 비룡각산타운", "note": ""}, {"name": "SK사천선구LRRU_FW", "lat": 34.9348371176996, "lng": 128.072823402533, "origAddr": "사천시 선구동 264 남동타워파크", "note": ""}, {"name": "SKL사천선구LRRU_FW2", "lat": 34.9348371176996, "lng": 128.072823402533, "origAddr": "사천시 선구동 264 남동타워파크", "note": ""}, {"name": "SKL사천선구LRRU_FW3", "lat": 34.9348371176996, "lng": 128.072823402533, "origAddr": "사천시 선구동 264 남동타워파크", "note": ""}, {"name": "SK사천선구LRRU0_FW", "lat": 34.9284763430719, "lng": 128.072959141641, "origAddr": "사천시 선구동 58-35 삼도상사", "note": ""}, {"name": "SKL사천선구LRRU0_FW2", "lat": 34.9284763430719, "lng": 128.072959141641, "origAddr": "사천시 선구동 58-35 삼도상사", "note": ""}, {"name": "SKL사천선구LRRU0_FW3", "lat": 34.9284763430719, "lng": 128.072959141641, "origAddr": "사천시 선구동 58-35 삼도상사", "note": ""}, {"name": "SK사천선구LRRU1_FW", "lat": 34.9284763430719, "lng": 128.072959141641, "origAddr": "사천시 선구동 58-35 삼도상사", "note": ""}, {"name": "SK사천송포3LRRU_FW", "lat": 34.9711029942322, "lng": 128.052928855648, "origAddr": "사천시 송포동 1102 송천마을복지관", "note": ""}, {"name": "SKL사천송포3LRRU_FW2", "lat": 34.9711029942322, "lng": 128.052928855648, "origAddr": "사천시 송포동 1102 송천마을복지관", "note": ""}, {"name": "SKL사천송포6LRRU_FW3", "lat": 34.9655201364811, "lng": 128.044263473346, "origAddr": "사천시 송포동 1336-3 나대지", "note": ""}, {"name": "SK사천송포6LRRU_FW", "lat": 34.9655635994179, "lng": 128.044114569558, "origAddr": "사천시 송포동 1339-3 나대지", "note": ""}, {"name": "SKL사천송포6LRRU_FW2", "lat": 34.9655635994179, "lng": 128.044114569558, "origAddr": "사천시 송포동 1339-3 나대지", "note": ""}, {"name": "SK사천송포LRRU_FW", "lat": 34.9558529760339, "lng": 128.037105433903, "origAddr": "사천시 송포동 1460-13 나대지", "note": ""}, {"name": "SKL사천송포LRRU_FW2", "lat": 34.9558529760339, "lng": 128.037105433903, "origAddr": "사천시 송포동 1460-13 나대지", "note": ""}, {"name": "SKL사천송포LRRU_FW3", "lat": 34.9558529760339, "lng": 128.037105433903, "origAddr": "사천시 송포동 1460-13 나대지", "note": ""}, {"name": "SK사천송포7LRRU_FW", "lat": 34.967728419585, "lng": 128.065131675668, "origAddr": "사천시 송포동 1509-1 남양궁전모텔", "note": ""}, {"name": "SKL사천송포7LRRU_FW2", "lat": 34.967728419585, "lng": 128.065131675668, "origAddr": "사천시 송포동 1509-1 남양궁전모텔", "note": ""}, {"name": "SKL사천송포7LRRU_FW3", "lat": 34.967728419585, "lng": 128.065131675668, "origAddr": "사천시 송포동 1509-1 남양궁전모텔", "note": ""}, {"name": "SK사천송포9LRRU_FW", "lat": 34.967429239746, "lng": 128.061820776299, "origAddr": "사천시 송포동 245-3 잔치집촌국수", "note": ""}, {"name": "SKL사천송포9LRRU_FW2", "lat": 34.967429239746, "lng": 128.061820776299, "origAddr": "사천시 송포동 245-3 잔치집촌국수", "note": ""}, {"name": "SKL사천송포9LRRU_FW3", "lat": 34.967429239746, "lng": 128.061820776299, "origAddr": "사천시 송포동 245-3 잔치집촌국수", "note": ""}, {"name": "SKL사천송포LRRU0_FW2", "lat": 34.968724201571, "lng": 128.06337446889, "origAddr": "사천시 송포동 277-3", "note": ""}, {"name": "SKL사천송포LRRU0_FW3", "lat": 34.968724201571, "lng": 128.06337446889, "origAddr": "사천시 송포동 277-3", "note": ""}, {"name": "SK사천송포2LRRU_FW", "lat": 34.97348247487, "lng": 128.060896850594, "origAddr": "사천시 송포동 435 일반", "note": ""}, {"name": "SK사천송포5LRRU_FW", "lat": 34.9602806224298, "lng": 128.040866489904, "origAddr": "사천시 송포동 산108 나대지", "note": ""}, {"name": "SKL사천송포5LRRU_FW2", "lat": 34.9602806224298, "lng": 128.040866489904, "origAddr": "사천시 송포동 산108 나대지", "note": ""}, {"name": "SKL사천송포5LRRU_FW3", "lat": 34.9602806224298, "lng": 128.040866489904, "origAddr": "사천시 송포동 산108 나대지", "note": ""}, {"name": "SK사천실안4LRRU_FW", "lat": 34.952195974833, "lng": 128.034685108459, "origAddr": "사천시 실안동 1109-2 나대지", "note": ""}, {"name": "SKL사천실안4LRRU_FW2", "lat": 34.952195974833, "lng": 128.034685108459, "origAddr": "사천시 실안동 1109-2 나대지", "note": ""}, {"name": "SKL사천실안4LRRU_FW3", "lat": 34.952195974833, "lng": 128.034685108459, "origAddr": "사천시 실안동 1109-2 나대지", "note": ""}, {"name": "SK사천실안2LRRU_FW", "lat": 34.9575831785256, "lng": 128.031083028412, "origAddr": "사천시 실안동 1183-1 나대지", "note": ""}, {"name": "SKL사천실안2LRRU_FW2", "lat": 34.9575831785256, "lng": 128.031083028412, "origAddr": "사천시 실안동 1183-1 나대지", "note": ""}, {"name": "SKL사천실안2LRRU_FW3", "lat": 34.9575831785256, "lng": 128.031083028412, "origAddr": "사천시 실안동 1183-1 나대지", "note": ""}, {"name": "SK사천실안3LRRU_FW", "lat": 34.9528768270672, "lng": 128.053642880983, "origAddr": "사천시 실안동 213 나대지", "note": ""}, {"name": "SKL사천실안3LRRU_FW2", "lat": 34.9528768270672, "lng": 128.053642880983, "origAddr": "사천시 실안동 213 나대지", "note": ""}, {"name": "SKL사천실안3LRRU_FW3", "lat": 34.9527344859079, "lng": 128.05360361931, "origAddr": "사천시 실안동 214 나대지", "note": ""}, {"name": "SK사천실안LRRU_FW", "lat": 34.9423580286881, "lng": 128.040825042694, "origAddr": "사천시 실안동 866-1 나대지", "note": ""}, {"name": "SKL사천실안LRRU_FW2", "lat": 34.9423580286881, "lng": 128.040825042694, "origAddr": "사천시 실안동 866-1 나대지", "note": ""}, {"name": "SKL사천실안LRRU_FW3", "lat": 34.9423580286881, "lng": 128.040825042694, "origAddr": "사천시 실안동 866-1 나대지", "note": ""}, {"name": "SK사천와룡LRRU_FW", "lat": 34.961633474905, "lng": 128.102770606613, "origAddr": "사천시 와룡동 201-5 나대지", "note": ""}, {"name": "SKL사천와룡LRRU_FW2", "lat": 34.961633474905, "lng": 128.102770606613, "origAddr": "사천시 와룡동 201-5 나대지", "note": ""}, {"name": "SKL사천와룡LRRU_FW3", "lat": 34.961633474905, "lng": 128.102770606613, "origAddr": "사천시 와룡동 201-5 나대지", "note": ""}, {"name": "SK사천와룡3LRRU_FW", "lat": 34.9698040189557, "lng": 128.108691820095, "origAddr": "사천시 와룡동 555 나대지", "note": ""}, {"name": "SKL사천와룡3LRRU_FW2", "lat": 34.9698040189557, "lng": 128.108691820095, "origAddr": "사천시 와룡동 555 나대지", "note": ""}, {"name": "SKL사천와룡3LRRU_FW3", "lat": 34.9698040189557, "lng": 128.108691820095, "origAddr": "사천시 와룡동 555 나대지", "note": ""}, {"name": "SK사천와룡2LRRU_FW", "lat": 34.9591985835711, "lng": 128.094004610548, "origAddr": "사천시 와룡동 산108-8 나대지", "note": ""}, {"name": "SKL사천와룡2LRRU_FW2", "lat": 34.9591985835711, "lng": 128.094004610548, "origAddr": "사천시 와룡동 산108-8 나대지", "note": ""}, {"name": "SKL사천와룡2LRRU_FW3", "lat": 34.9591985835711, "lng": 128.094004610548, "origAddr": "사천시 와룡동 산108-8 나대지", "note": ""}, {"name": "SK사천좌룡LRRU_FW", "lat": 34.9525872134381, "lng": 128.076462877561, "origAddr": "사천시 좌룡동 377-20 현아빌딩", "note": ""}, {"name": "SKL사천좌룡LRRU_FW2", "lat": 34.9525872134381, "lng": 128.076462877561, "origAddr": "사천시 좌룡동 377-20 현아빌딩", "note": ""}, {"name": "SKL사천좌룡LRRU_FW3", "lat": 34.9525872134381, "lng": 128.076462877561, "origAddr": "사천시 좌룡동 377-20 현아빌딩", "note": ""}, {"name": "SK사천E마트IB_LRRU_FW", "lat": 34.9506846959983, "lng": 128.077222910288, "origAddr": "사천시 좌룡동 388-10 E-마트사천점", "note": ""}, {"name": "SKL사천E마트IB_LRRU_FW2", "lat": 34.9506846959983, "lng": 128.077222910288, "origAddr": "사천시 좌룡동 388-10 E-마트사천점", "note": ""}, {"name": "SKL사천E마트IB_LRRU_FW3", "lat": 34.9506846959983, "lng": 128.077222910288, "origAddr": "사천시 좌룡동 388-10 E-마트사천점", "note": ""}, {"name": "SK사천죽림5LRRU_FW", "lat": 34.9645831517233, "lng": 128.081192259814, "origAddr": "사천시 죽림동 149-1 나대지", "note": ""}, {"name": "SKL사천죽림5LRRU_FW2", "lat": 34.9645831517233, "lng": 128.081192259814, "origAddr": "사천시 죽림동 149-1 나대지", "note": ""}, {"name": "SK사천송포4LRRU_FW", "lat": 34.9697154896763, "lng": 128.06619082444, "origAddr": "사천시 죽림동 604-9 임내마을회관", "note": ""}, {"name": "SKL사천송포4LRRU_FW2", "lat": 34.9697154896763, "lng": 128.06619082444, "origAddr": "사천시 죽림동 604-9 임내마을회관", "note": ""}, {"name": "SKL사천송포4LRRU_FW3", "lat": 34.9697154896763, "lng": 128.06619082444, "origAddr": "사천시 죽림동 604-9 임내마을회관", "note": ""}, {"name": "SK사천죽림LRRU_FW", "lat": 34.9726733139657, "lng": 128.074615009933, "origAddr": "사천시 죽림동 77-1 나대지", "note": ""}, {"name": "SKL사천죽림LRRU_FW2", "lat": 34.9726733139657, "lng": 128.074615009933, "origAddr": "사천시 죽림동 77-1 나대지", "note": ""}, {"name": "SKL사천죽림LRRU_FW3", "lat": 34.9726733139657, "lng": 128.074615009933, "origAddr": "사천시 죽림동 77-1 나대지", "note": ""}, {"name": "SK사천아리안1-1LRRU_FW", "lat": 34.9650946780269, "lng": 128.068563169049, "origAddr": "사천시 죽림동 900-4 죽림아리안아파트", "note": ""}, {"name": "SKL사천아리안1-1LRRU_FW3", "lat": 34.9650946780269, "lng": 128.068563169049, "origAddr": "사천시 죽림동 900-4 죽림아리안아파트", "note": ""}, {"name": "SK사천아리안LRRU_FW", "lat": 34.9650946780269, "lng": 128.068563169049, "origAddr": "사천시 죽림동 900-4 죽림아리안아파트", "note": ""}, {"name": "SKL사천아리안LRRU_FW3", "lat": 34.9650946780269, "lng": 128.068563169049, "origAddr": "사천시 죽림동 900-4 죽림아리안아파트", "note": ""}, {"name": "SK사천죽림2LRRU_FW", "lat": 34.9625122924388, "lng": 128.069276777084, "origAddr": "사천시 죽림동 936-2 나대지", "note": ""}, {"name": "SKL사천죽림2LRRU_FW2", "lat": 34.9625122924388, "lng": 128.069276777084, "origAddr": "사천시 죽림동 936-2 나대지", "note": ""}, {"name": "SKL사천죽림2LRRU_FW3", "lat": 34.9625122924388, "lng": 128.069276777084, "origAddr": "사천시 죽림동 936-2 나대지", "note": ""}, {"name": "SKL사천죽림5LRRU_FW3", "lat": 34.9703788354974, "lng": 128.07846309964, "origAddr": "사천시 죽림동 산220 나대지", "note": ""}, {"name": "SKL사천향촌2LRRU_FW2", "lat": 34.9246650148021, "lng": 128.091488728323, "origAddr": "사천시 향촌동 1207 나대지", "note": ""}, {"name": "SKL사천향촌2LRRU_FW3", "lat": 34.9246650148021, "lng": 128.091488728323, "origAddr": "사천시 향촌동 1207 나대지", "note": ""}, {"name": "SK사천향촌4LRRU_FW", "lat": 34.9325767454661, "lng": 128.094587328759, "origAddr": "사천시 향촌동 815-43 황제빌", "note": ""}, {"name": "SKL사천향촌4LRRU_FW2", "lat": 34.9325767454661, "lng": 128.094587328759, "origAddr": "사천시 향촌동 815-43 황제빌", "note": ""}, {"name": "SKL사천향촌4LRRU_FW3", "lat": 34.9325767454661, "lng": 128.094587328759, "origAddr": "사천시 향촌동 815-43 황제빌", "note": ""}, {"name": "SK사천가양라끄빌LRRU_FW", "lat": 34.9356323233581, "lng": 128.087416109636, "origAddr": "사천시 향촌동 926-1", "note": ""}, {"name": "SK사천향촌3LRRU_FW", "lat": 34.9327655343275, "lng": 128.087838606436, "origAddr": "사천시 향촌동 990-9 청림그린피아", "note": ""}, {"name": "SK사천향촌6LRRU_FW", "lat": 34.9296233921111, "lng": 128.10752984646, "origAddr": "사천시 향촌동 산11-15 나대지", "note": ""}, {"name": "SKL사천향촌6LRRU_FW2", "lat": 34.9296233921111, "lng": 128.10752984646, "origAddr": "사천시 향촌동 산11-15 나대지", "note": ""}, {"name": "SKL사천향촌6LRRU_FW3", "lat": 34.9296233921111, "lng": 128.10752984646, "origAddr": "사천시 향촌동 산11-15 나대지", "note": ""}, {"name": "SK사천향촌LRRU_FW", "lat": 34.9251577302774, "lng": 128.098305062861, "origAddr": "사천시 향촌동 산30-1 나대지", "note": ""}, {"name": "SKL사천향촌LRRU_FW2", "lat": 34.9251577302774, "lng": 128.098305062861, "origAddr": "사천시 향촌동 산30-1 나대지", "note": ""}, {"name": "SKL사천향촌LRRU_FW3", "lat": 34.9251577302774, "lng": 128.098305062861, "origAddr": "사천시 향촌동 산30-1 나대지", "note": ""}];
+var STORAGE_KEY = '6월_4주_진행중_done';
+var total = STATIONS.length;
+
+var map = L.map('map').setView([34.94416, 128.07053], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+function makeIcon(done) {
+  var bg = done ? '#2e7d32' : '#b71c1c';
+  var emoji = done ? '✅' : '📻';
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:' + bg + ';color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">' + emoji + '</div>',
+    iconSize:[28,28], iconAnchor:[14,14], popupAnchor:[0,-15]
+  });
+}
+
+var doneSet = {};
+try { doneSet = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+function saveDone() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(doneSet)); } catch(e) {}
+  updateProgress();
+}
+
+function updateProgress() {
+  var cnt = Object.keys(doneSet).filter(function(k){ return doneSet[k]; }).length;
+  document.getElementById('progress-badge').textContent = '완료 ' + cnt + '/' + total;
+}
+
+var markers = [];
+
+STATIONS.forEach(function(s, idx) {
+  var done = !!doneSet[idx];
+  var m = L.marker([s.lat, s.lng], {icon: makeIcon(done)}).addTo(map);
+
+  // 이름 항상 표시 (permanent tooltip)
+  m.bindTooltip(s.name, {
+    permanent: true,
+    direction: 'top',
+    offset: [0, -16],
+    className: 'marker-label'
+  });
+
+  function buildPopup() {
+    var isDone = !!doneSet[idx];
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+    var noteHtml = s.note
+      ? '<div class="popup-note">📝 ' + s.note + '</div>'
+      : '<div class="popup-note-empty">특이사항 없음</div>';
+    var doneBtn = isDone
+      ? '<button class="popup-btn btn-undone" onclick="toggleDone(' + idx + ')">↩️ 완료 취소</button>'
+      : '<button class="popup-btn btn-done" onclick="toggleDone(' + idx + ')">✅ 완료</button>';
+    return '<div class="popup-name">' + (isDone ? '✅ ' : '📻 ') + s.name + '</div>' +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      noteHtml +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>' + doneBtn;
+  }
+
+  m.bindPopup(buildPopup, {maxWidth:280});
+  markers.push({marker:m, station:s, visible:true, idx:idx});
+});
+
+window.toggleDone = function(idx) {
+  doneSet[idx] = !doneSet[idx];
+  saveDone();
+  var e = markers[idx];
+  e.marker.setIcon(makeIcon(!!doneSet[idx]));
+  e.marker.openPopup();
+  renderSideList(markers.filter(function(x){ return x.visible; }));
+};
+
+updateProgress();
+
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var m = !kw
+      || e.station.name.toLowerCase().indexOf(kw)>=0
+      || e.station.origAddr.toLowerCase().indexOf(kw)>=0
+      || e.station.note.toLowerCase().indexOf(kw)>=0;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var isDone = !!doneSet[e.idx];
+    var d = document.createElement('div');
+    d.className = 'side-item' + (isDone ? ' done' : '');
+    var noteEl = e.station.note ? '<div class="si-note">📝 ' + e.station.note + '</div>' : '';
+    d.innerHTML =
+      '<div class="si-check">' + (isDone ? '✅' : '⬜') + '</div>' +
+      '<div class="si-text">' +
+        '<div class="si-name' + (isDone ? ' done' : '') + '">' + e.station.name + '</div>' +
+        '<div class="si-addr">' + e.station.origAddr + '</div>' +
+        noteEl +
+      '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>
