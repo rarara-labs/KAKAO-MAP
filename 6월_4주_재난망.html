@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>6월 4주 재난망 전자파측정 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#b71c1c,#e53935);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:16px; font-weight:bold; flex:1; }
+    #progress-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px; white-space:nowrap;
+    }
+    #toolbar {
+      background:white; padding:8px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #ffcdd2; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#e53935; }
+    #btn-fit {
+      background:#e53935; color:white; border:none;
+      border-radius:16px; padding:8px 12px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 108px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#ffebee;
+      font-size:12px; font-weight:bold; color:#c62828;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+      display:flex; align-items:flex-start; gap:8px;
+    }
+    .side-item:hover { background:#ffebee; }
+    .side-item.done { background:#f1fdf4; }
+    .si-check { font-size:18px; padding-top:1px; }
+    .si-text { flex:1; }
+    .si-name { font-size:13px; font-weight:bold; color:#b71c1c; word-break:break-all; }
+    .si-name.done { color:#888; text-decoration:line-through; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    .si-note { font-size:11px; color:#e53935; margin-top:3px; font-style:italic; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 108px); width:100%; }
+    }
+    /* 마커 라벨 */
+    .marker-label {
+      background:white; border:1.5px solid #e53935; border-radius:4px;
+      padding:1px 5px; font-size:11px; font-weight:bold; color:#b71c1c;
+      white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,0.2);
+    }
+    /* 팝업 */
+    .popup-name { font-size:14px; font-weight:bold; color:#b71c1c; margin-bottom:4px; word-break:break-all; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:6px; }
+    .popup-note {
+      background:#fff8f8; border-left:3px solid #e53935;
+      padding:6px 8px; font-size:12px; color:#333;
+      border-radius:0 4px 4px 0; margin-bottom:8px;
+      white-space:pre-wrap; word-break:break-all;
+    }
+    .popup-note-empty { font-size:12px; color:#bbb; margin-bottom:8px; font-style:italic; }
+    .popup-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+      cursor:pointer; border:none;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#b71c1c; color:white; }
+    .btn-done { background:#2e7d32; color:white; width:100%; margin-top:4px; }
+    .btn-undone { background:#e0e0e0; color:#555; width:100%; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:18px">📻</span>
+  <h1>6월 4주 재난망 전자파측정</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;white-space:nowrap;">← 목록</a>
+  <div id="progress-badge">완료 0/40</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (40)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "재난안전_경남_합천매안-PS-RU", "lat": 35.7252176177971, "lng": 128.119472740961, "origAddr": "경상남도 합천군 가야면 청현리 405-1", "note": "경상남도 합천군 가야면 청현리 405-1"}, {"name": "재난안전_경남_합천야로-PS-RU", "lat": 35.7086626105944, "lng": 128.17604871139, "origAddr": "경상남도 합천군 야로면 하빈리 702-2", "note": "경상남도 합천군 야로면 하빈리 702-2"}, {"name": "재난안전_경남_합천야로2터널앞-PS-RU", "lat": 35.6947198519368, "lng": 128.149652200454, "origAddr": "경상남도 합천군 야로면 묵촌리 산80-14", "note": "경상남도 합천군 야로면 묵촌리 산80-14"}, {"name": "재난안전_경남_합천구원-PS-RU", "lat": 35.7852859242259, "lng": 128.110596086179, "origAddr": "경상남도 합천군 가야면 가야산로 1502-48", "note": "경상남도 합천군 가야면 가야산로 1502-48"}, {"name": "재난안전_경남_합천해인사IC-PS-RU", "lat": 35.6963913691973, "lng": 128.181743591957, "origAddr": "경상남도 합천군 야로면 금평리 산49-6", "note": "경상남도 합천군 야로면 금평리 산49-6"}, {"name": "재난안전_경남_합천정대-PS-RU", "lat": 35.6894887267517, "lng": 128.169669082715, "origAddr": "경상남도 합천군 야로면 정대리 산43-4", "note": "경상남도 합천군 야로면 정대리 산43-4"}, {"name": "재난안전_경남_합천치인2-PS-RU", "lat": 35.7945837743483, "lng": 128.094840028955, "origAddr": "경상남도 합천군 가야면 해인사길 53", "note": "경상남도 합천군 가야면 해인사길 53"}, {"name": "재난안전_경남_합천구원3-PS-RU", "lat": 35.773949053204, "lng": 128.129240671337, "origAddr": "경상남도 합천군 가야면 구원1길 3", "note": "경상남도 합천군 가야면 구원1길 3"}, {"name": "재난안전_경남_합천야로2-PS-RU", "lat": 35.7305647795847, "lng": 128.15704705369, "origAddr": "경상남도 합천군 야로면 월광리 490-18", "note": "경상남도 합천군 야로면 월광리 490-18"}, {"name": "재난안전_경남_합천이천2-PS-RU", "lat": 35.7323614442967, "lng": 128.140567932989, "origAddr": "경상남도 합천군 가야면 월광이천길 176", "note": "경상남도 합천군 가야면 월광이천길 176"}, {"name": "재난안전_경남_합천이천3-PS-RU", "lat": 35.7415908018755, "lng": 128.124523824705, "origAddr": "경상남도 합천군 가야면 사촌리 산31-2", "note": "경상남도 합천군 가야면 사촌리 산31-2"}, {"name": "재난안전_경남_합천가야2터널앞-PS-RU", "lat": 35.7095219195162, "lng": 128.104465691261, "origAddr": "경상남도 합천군 가야면 성기리 산48-4", "note": "경상남도 합천군 가야면 성기리 산48-4"}, {"name": "재난안전_경남_합천가야1터널앞-PS-RU", "lat": 35.7083925785488, "lng": 128.086867525049, "origAddr": "경상남도 합천군 가야면 성기리 산105-21", "note": "경상남도 합천군 가야면 성기리 산105-21"}, {"name": "재난안전_경남_합천묘산2-PS-RU", "lat": 35.6550398617852, "lng": 128.109374239464, "origAddr": "경상남도 합천군 묘산면 산제리 86", "note": "경상남도 합천군 묘산면 산제리 86"}, {"name": "재난안전_경남_합천반포-PS-RU", "lat": 35.6421635349929, "lng": 128.082922735545, "origAddr": "경상남도 합천군 묘산면 반포리 553-1", "note": "경상남도 합천군 묘산면 반포리 553-1"}, {"name": "재난안전_경남_합천관기2-PS-RU", "lat": 35.645762004664, "lng": 128.127400153799, "origAddr": "경상남도 합천군 묘산면 관기리 524-3", "note": "경상남도 합천군 묘산면 관기리 524-3"}, {"name": "재난안전_경남_합천덕암-PS-RU", "lat": 35.6821441919276, "lng": 128.16724043012, "origAddr": "경상남도 합천군 야로면 덕암리 산30", "note": "경상남도 합천군 야로면 덕암리 산30"}, {"name": "재난안전_경남_합천하림5-PS-RU", "lat": 35.7432271326738, "lng": 128.145301365246, "origAddr": "경상남도 합천군 야로면 하림리 837-3", "note": "경상남도 합천군 야로면 하림리 837-3"}, {"name": "재난안전_경남_합천묘산-PS-RU", "lat": 35.6780489529228, "lng": 128.144477990562, "origAddr": "경상남도 합천군 묘산면 거산리 614-2", "note": "경상남도 합천군 묘산면 거산리 614-2"}, {"name": "재난안재난안전_경남_합천황산4-PS-RU", "lat": 35.7646777947179, "lng": 128.138402097025, "origAddr": "경상남도 합천군 가야면 야천리 476-2", "note": "경상남도 합천군 가야면 야천리 476-2"}, {"name": "재난안전_경남_합천야천2-PS-RU", "lat": 35.7733675084234, "lng": 128.1413156151, "origAddr": "경상남도 합천군 가야면 야천리 산117-1", "note": "경상남도 합천군 가야면 야천리 산117-1"}, {"name": "재난안전_경남_합천성기2-PS-ICS", "lat": 35.7136645902202, "lng": 128.104277201199, "origAddr": "경상남도 합천군 가야면 성기리 451-1", "note": "경상남도 합천군 가야면 성기리 451-1"}, {"name": "재난안전_경남_합천가산3-PS-ICS", "lat": 35.6611990109544, "lng": 128.123395534564, "origAddr": "경상남도 합천군 묘산면 가산리 595-7", "note": "경상남도 합천군 묘산면 가산리 595-7"}, {"name": "재난안전_경남_합천청계3-PS-ICS", "lat": 35.6953105988309, "lng": 128.191718752986, "origAddr": "경상남도 합천군 야로면 청계리 237-3", "note": "경상남도 합천군 야로면 청계리 237-3"}, {"name": "재난안전_경남_거창월평2-PS-RU", "lat": 35.6554457961415, "lng": 127.925648799658, "origAddr": "경상남도 거창군 남상면 월평리 산45-8", "note": "경상남도 거창군 남상면 월평리 산45-8"}, {"name": "재난안전_경남_거창기리-PS-RU", "lat": 35.6674905861582, "lng": 128.018132434709, "origAddr": "경상남도 거창군 가조면 기리 1162", "note": "경상남도 거창군 가조면 기리 1162"}, {"name": "재난안전_경남_거창일반산업단지2-PS-RU", "lat": 35.6521579954612, "lng": 127.93361754768, "origAddr": "경상남도 거창군 남상면 대산리 1604", "note": "경상남도 거창군 남상면 대산리 1604"}, {"name": "재난안전_경남_거창남상4-PS-RU", "lat": 35.6174979311102, "lng": 127.963558535491, "origAddr": "경상남도 거창군 남상면 임불리 2068-9", "note": "경상남도 거창군 남상면 임불리 2068-9"}, {"name": "재난안전_경남_거창남상3-PS-RU", "lat": 35.6416469452037, "lng": 127.910909985427, "origAddr": "경상남도 거창군 남상면 무촌리 663", "note": "경상남도 거창군 남상면 무촌리 663"}, {"name": "재난안전_경남_거창가조2-PS-RU", "lat": 35.701776293631, "lng": 128.019461816541, "origAddr": "경상남도 거창군 가조면 일부리 1122-1", "note": "경상남도 거창군 가조면 일부리 1122-1"}, {"name": "재난안전_경남_거창가조장기4-PS-RU", "lat": 35.7220820029218, "lng": 127.999830313807, "origAddr": "경상남도 거창군 가조면 장기리 459-8", "note": "경상남도 거창군 가조면 장기리 459-8"}, {"name": "재난안전_경남_거창남하-PS-RU", "lat": 35.7068016303153, "lng": 127.962146186664, "origAddr": "경상남도 거창군 남하면 둔마리 943-1", "note": "경상남도 거창군 남하면 둔마리 943-1"}, {"name": "재난안전_경남_거창휴게소-PS-RU", "lat": 35.7072445944856, "lng": 128.060430865405, "origAddr": "경상남도 거창군 가조면 도리 438", "note": "경상남도 거창군 가조면 도리 438"}, {"name": "재난안전_경남_거창진목2-PS-RU", "lat": 35.5915153770038, "lng": 127.869438537112, "origAddr": "경상남도 거창군 남상면 진목리 산50-13", "note": "경상남도 거창군 남상면 진목리 산50-13"}, {"name": "재난안전_경남_거창둔동-PS-RU", "lat": 35.6140971435607, "lng": 127.881693867313, "origAddr": "경상남도 거창군 남상면 수남로 1411", "note": "경상남도 거창군 남상면 수남로 1411"}, {"name": "재난안전_경남_거창덕산23-PS-RU", "lat": 35.6034147628502, "lng": 127.917137922938, "origAddr": "경상남도 거창군 남상면 무촌리 38-2", "note": "경상남도 거창군 남상면 무촌리 38-2"}, {"name": "재난안전_경남_거창기리2-PS-ICS", "lat": 35.6831946436623, "lng": 128.020600631179, "origAddr": "경상남도 거창군 가조면 지산로 1181", "note": "경상남도 거창군 가조면 지산로 1181"}, {"name": "재난안전_경남_거창동례3-PS-ICS", "lat": 35.7016104383507, "lng": 128.001723107577, "origAddr": "경상남도 거창군 가조면 동례리 530-8", "note": "경상남도 거창군 가조면 동례리 530-8"}, {"name": "재난안전_경남_거창남상임불-PS-ICS", "lat": 35.6235811232371, "lng": 127.974980339964, "origAddr": "경상남도 거창군 남상면 임불리 1104-1", "note": "경상남도 거창군 남상면 임불리 1104-1"}, {"name": "재난안전_경남_거창남상전척-PS-ICS", "lat": 35.6208029035655, "lng": 127.96448209296, "origAddr": "경상남도 거창군 남상면 전척리 산90-8", "note": "경상남도 거창군 남상면 전척리 산90-8"}];
+var STORAGE_KEY = '6월_4주_재난망_done';
+var total = STATIONS.length;
+
+var map = L.map('map').setView([35.69139, 128.06611], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+function makeIcon(done) {
+  var bg = done ? '#2e7d32' : '#b71c1c';
+  var emoji = done ? '✅' : '📻';
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:' + bg + ';color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">' + emoji + '</div>',
+    iconSize:[28,28], iconAnchor:[14,14], popupAnchor:[0,-15]
+  });
+}
+
+var doneSet = {};
+try { doneSet = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+function saveDone() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(doneSet)); } catch(e) {}
+  updateProgress();
+}
+
+function updateProgress() {
+  var cnt = Object.keys(doneSet).filter(function(k){ return doneSet[k]; }).length;
+  document.getElementById('progress-badge').textContent = '완료 ' + cnt + '/' + total;
+}
+
+var markers = [];
+
+STATIONS.forEach(function(s, idx) {
+  var done = !!doneSet[idx];
+  var m = L.marker([s.lat, s.lng], {icon: makeIcon(done)}).addTo(map);
+
+  // 이름 항상 표시 (permanent tooltip)
+  m.bindTooltip(s.name, {
+    permanent: true,
+    direction: 'top',
+    offset: [0, -16],
+    className: 'marker-label'
+  });
+
+  function buildPopup() {
+    var isDone = !!doneSet[idx];
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+    var noteHtml = s.note
+      ? '<div class="popup-note">📝 ' + s.note + '</div>'
+      : '<div class="popup-note-empty">특이사항 없음</div>';
+    var doneBtn = isDone
+      ? '<button class="popup-btn btn-undone" onclick="toggleDone(' + idx + ')">↩️ 완료 취소</button>'
+      : '<button class="popup-btn btn-done" onclick="toggleDone(' + idx + ')">✅ 완료</button>';
+    return '<div class="popup-name">' + (isDone ? '✅ ' : '📻 ') + s.name + '</div>' +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      noteHtml +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>' + doneBtn;
+  }
+
+  m.bindPopup(buildPopup, {maxWidth:280});
+  markers.push({marker:m, station:s, visible:true, idx:idx});
+});
+
+window.toggleDone = function(idx) {
+  doneSet[idx] = !doneSet[idx];
+  saveDone();
+  var e = markers[idx];
+  e.marker.setIcon(makeIcon(!!doneSet[idx]));
+  e.marker.openPopup();
+  renderSideList(markers.filter(function(x){ return x.visible; }));
+};
+
+updateProgress();
+
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var m = !kw
+      || e.station.name.toLowerCase().indexOf(kw)>=0
+      || e.station.origAddr.toLowerCase().indexOf(kw)>=0
+      || e.station.note.toLowerCase().indexOf(kw)>=0;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var isDone = !!doneSet[e.idx];
+    var d = document.createElement('div');
+    d.className = 'side-item' + (isDone ? ' done' : '');
+    var noteEl = e.station.note ? '<div class="si-note">📝 ' + e.station.note + '</div>' : '';
+    d.innerHTML =
+      '<div class="si-check">' + (isDone ? '✅' : '⬜') + '</div>' +
+      '<div class="si-text">' +
+        '<div class="si-name' + (isDone ? ' done' : '') + '">' + e.station.name + '</div>' +
+        '<div class="si-addr">' + e.station.origAddr + '</div>' +
+        noteEl +
+      '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>
