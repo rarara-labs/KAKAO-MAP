@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>7월 4주 재난망 재난망 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#bf360c,#e64a19);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:16px; font-weight:bold; flex:1; }
+    #progress-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px; white-space:nowrap;
+    }
+    #toolbar {
+      background:white; padding:8px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #ffccbc; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#e64a19; }
+    #btn-fit {
+      background:#e64a19; color:white; border:none;
+      border-radius:16px; padding:8px 12px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 108px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#fbe9e7;
+      font-size:12px; font-weight:bold; color:#bf360c;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+      display:flex; align-items:center; gap:8px;
+    }
+    .side-item:hover { background:#fbe9e7; }
+    .side-item.done { background:#f1fdf4; }
+    .si-text { flex:1; }
+    .si-name { font-size:13px; font-weight:bold; color:#bf360c; word-break:break-all; }
+    .si-name.done { color:#888; text-decoration:line-through; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    .si-check { font-size:18px; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 108px); width:100%; }
+    }
+    .popup-name { font-size:13px; font-weight:bold; color:#bf360c; margin-bottom:4px; word-break:break-all; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:8px; }
+    .popup-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+      cursor:pointer; border:none;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#bf360c; color:white; }
+    .btn-done { background:#2e7d32; color:white; width:100%; margin-top:4px; }
+    .btn-undone { background:#e0e0e0; color:#555; width:100%; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:18px">🚨</span>
+  <h1>7월 4주 재난망 재난망</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;white-space:nowrap;">← 목록</a>
+  <div id="progress-badge">완료 0/40</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="호출명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (40)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "재난안전_경남_함양육십령터널-PS-RU", "lat": 35.6845054977945, "lng": 127.661204667562, "origAddr": "경상남도 함양군 서상면 금당리 산 19-3"}, {"name": "재난안전_경남_함양서상2-PS-RU", "lat": 35.6843503637251, "lng": 127.688682616814, "origAddr": "경상남도 함양군 서상면 대남리 1787-9"}, {"name": "재난안전_경남_함양서상-PS-RU", "lat": 35.7354578479441, "lng": 127.67798285169, "origAddr": "경상남도 함양군 서상면 상남리 1171"}, {"name": "재난안전_경남_함양상남3-PS-RU", "lat": 35.7487160052368, "lng": 127.699095939286, "origAddr": "경상남도 함양군 서상면 상남리 산 8-4"}, {"name": "재난안전_경남_함양중남2-PS-RU", "lat": 35.7138490714795, "lng": 127.675951291868, "origAddr": "경상남도 함양군 서상면 상남리 산116-6"}, {"name": "재난안전_경남_함양옥산-PS-RU", "lat": 35.6623240749009, "lng": 127.67933535134, "origAddr": "경상남도 함양군 서상면 옥산리 655-1"}, {"name": "재난안전_경남_함양다곡2-PS-RU", "lat": 35.6181443111619, "lng": 127.742888331624, "origAddr": "경상남도 함양군 서하면 다곡리 산51-6"}, {"name": "재난안전_경남_함양서하졸음쉼터-PS-RU", "lat": 35.6335662595381, "lng": 127.714409548242, "origAddr": "경상남도 함양군 서하면 봉전리 1212-2"}, {"name": "재난안전_경남_함양서하2-PS-RU", "lat": 35.6449840425391, "lng": 127.694092000669, "origAddr": "경상남도 함양군 서하면 송계리 1133-4"}, {"name": "재난안전_경남_함양운곡-PS-RU", "lat": 35.6279531247751, "lng": 127.684220227676, "origAddr": "경상남도 함양군 서하면 운곡리 1189-4"}, {"name": "재난안전_경남_함양운산2-PS-RU", "lat": 35.598160623386, "lng": 127.663458929294, "origAddr": "경상남도 함양군 서하면 운곡리 산218-3"}, {"name": "재난안전_경남_함양황산-PS-RU", "lat": 35.6198658332151, "lng": 127.773252064761, "origAddr": "경상남도 함양군 서하면 황산리 132"}, {"name": "재난안전_경남_함양화산2-PS-RU", "lat": 35.5124641781436, "lng": 127.8103164138, "origAddr": "경상남도 함양군 수동면 화산리 333"}, {"name": "재난안전_경남_함양화산6-PS-RU", "lat": 35.5255306971122, "lng": 127.79105259695, "origAddr": "경상남도 함양군 수동면 화산리 995-8"}, {"name": "재난안전_경남_함양지곡-PS-RU", "lat": 35.5523090719578, "lng": 127.769654291064, "origAddr": "경상남도 함양군 지곡면 공배리 14-2"}, {"name": "재난안전_경남_함양시목-PS-RU", "lat": 35.6113079967258, "lng": 127.777643977632, "origAddr": "경상남도 함양군 지곡면 시목리 69-3"}, {"name": "재난안전_경남_함양지곡2-PS-RU", "lat": 35.5972398146753, "lng": 127.771129436088, "origAddr": "경상남도 함양군 지곡면 시목리 880-1"}, {"name": "재난안전_경남_함양창평2-PS-RU", "lat": 35.5836986007055, "lng": 127.787523247673, "origAddr": "경상남도 함양군 지곡면 창평리 28"}, {"name": "재난안전_경남_함양평촌-PS-RU", "lat": 35.568576057107, "lng": 127.756901092481, "origAddr": "경상남도 함양군 지곡면 평촌리 산 39-3"}, {"name": "재난안전_경남_함양상림팰리스-PS-RU", "lat": 35.5272463096351, "lng": 127.728466512452, "origAddr": "경상남도 함양군 함양읍 교산리 335"}, {"name": "재난안전_경남_함양교산2-PS-RU", "lat": 35.539421824282, "lng": 127.724436435064, "origAddr": "경상남도 함양군 함양읍 교산리 641-4"}, {"name": "재난안전_경남_함양구룡5-PS-RU", "lat": 35.4732076483809, "lng": 127.702354106674, "origAddr": "경상남도 함양군 함양읍 구룡리 산119-7"}, {"name": "재난안전_경남_함양난평-PS-RU", "lat": 35.4942494063227, "lng": 127.70408704177, "origAddr": "경상남도 함양군 함양읍 난평리 495-4"}, {"name": "재난안전_경남_함양백연2-PS-RU", "lat": 35.5132869526405, "lng": 127.723033876466, "origAddr": "경상남도 함양군 함양읍 백연리 138-5"}, {"name": "재난안전_경남_함양IC2-PS-RU", "lat": 35.5321078708476, "lng": 127.757670031269, "origAddr": "경상남도 함양군 함양읍 백천리 1633-2"}, {"name": "재난안전_경남_함양백천3-PS-RU", "lat": 35.5299399046182, "lng": 127.774797586716, "origAddr": "경상남도 함양군 함양읍 백천리 813-2"}, {"name": "재난안전_경남_함양신관-PS-RU", "lat": 35.5257707508465, "lng": 127.743733290841, "origAddr": "경상남도 함양군 함양읍 신관리 738-1"}, {"name": "재난안전_경남_함양신천-PS-RU", "lat": 35.5427396894326, "lng": 127.74337914507, "origAddr": "경상남도 함양군 함양읍 신천리 2-7"}, {"name": "재난안전_경남_함양이은-PS-RU", "lat": 35.5016842785936, "lng": 127.740683443687, "origAddr": "경상남도 함양군 함양읍 이은리 130"}, {"name": "재난안전_경남_함양3-PS-RU", "lat": 35.4658553358464, "lng": 127.653047512417, "origAddr": "경상남도 함양군 함양읍 죽림리 1210-1"}, {"name": "재난안전_경남_함양죽림-PS-RU", "lat": 35.4769330414874, "lng": 127.682004281922, "origAddr": "경상남도 함양군 함양읍 죽림리 산 100-1"}, {"name": "재난안전_경남_함양휴천2-PS-RU", "lat": 35.4809485817281, "lng": 127.751963816887, "origAddr": "경상남도 함양군 휴천면 목현리 129-1"}, {"name": "재난안전_경남_함양목현3-PS-RU", "lat": 35.4873839580684, "lng": 127.739256714473, "origAddr": "경상남도 함양군 휴천면 목현리 산 61-2"}, {"name": "재난안전_경남_함양문정3-PS-RU", "lat": 35.4242517091003, "lng": 127.728129183276, "origAddr": "경상남도 함양군 휴천면 문정리 1452"}, {"name": "재난안전_경남_함양문정-PS-ICS", "lat": 35.411930399432, "lng": 127.712845816536, "origAddr": "경상남도 함양군 휴천면 문정리 산 32-1"}, {"name": "재난안전_경남_함양휴천-PS-RU", "lat": 35.4374830521224, "lng": 127.748881404999, "origAddr": "경상남도 함양군 휴천면 운서리 산 73-1"}, {"name": "재난안전_경남_함양휴천1-PS-RU", "lat": 35.4806813020567, "lng": 127.750233904394, "origAddr": "경상남도 함양군 휴천면 월평리 산 123-1"}, {"name": "재난안전_경남_함양월평-PS-ICS", "lat": 35.4695926547995, "lng": 127.703778615281, "origAddr": "경상남도 함양군 휴천면 월평리 산 83-1"}, {"name": "재난안전_경남_함양휴천호산-PS-ICS", "lat": 35.4781131157427, "lng": 127.763008890235, "origAddr": "경상남도 함양군 휴천면 호산리 229-1"}, {"name": "재난안전_경남_함양옥매2-PS-RU", "lat": 35.4989396953276, "lng": 127.757391715769, "origAddr": "경상남도 함양군 휴천면 호산리 산6-6"}];
+var STORAGE_KEY = '재난망_7월_4주_재난망_done';
+var total = STATIONS.length;
+
+var map = L.map('map').setView([35.55537, 127.72880], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+function makeIcon(done) {
+  var bg = done ? '#2e7d32' : '#bf360c';
+  var emoji = done ? '✅' : '🚨';
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:' + bg + ';color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">' + emoji + '</div>',
+    iconSize:[28,28], iconAnchor:[14,14], popupAnchor:[0,-15]
+  });
+}
+
+var doneSet = {};
+try { doneSet = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+function saveDone() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(doneSet)); } catch(e) {}
+  updateProgress();
+}
+
+function updateProgress() {
+  var cnt = Object.keys(doneSet).filter(function(k){ return doneSet[k]; }).length;
+  document.getElementById('progress-badge').textContent = '완료 ' + cnt + '/' + total;
+}
+
+var markers = [];
+
+STATIONS.forEach(function(s, idx) {
+  var done = !!doneSet[idx];
+  var m = L.marker([s.lat, s.lng], {icon: makeIcon(done)}).addTo(map);
+
+  function buildPopup() {
+    var isDone = !!doneSet[idx];
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+    var doneBtn = isDone
+      ? '<button class="popup-btn btn-undone" onclick="toggleDone(' + idx + ')">↩️ 완료 취소</button>'
+      : '<button class="popup-btn btn-done" onclick="toggleDone(' + idx + ')">✅ 완료</button>';
+    return '<div class="popup-name">' + (isDone ? '✅ ' : '🚨 ') + s.name + '</div>' +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>' + doneBtn;
+  }
+
+  m.bindPopup(buildPopup, {maxWidth:270});
+  markers.push({marker:m, station:s, visible:true, idx:idx});
+});
+
+window.toggleDone = function(idx) {
+  doneSet[idx] = !doneSet[idx];
+  saveDone();
+  var e = markers[idx];
+  e.marker.setIcon(makeIcon(!!doneSet[idx]));
+  e.marker.openPopup();
+  renderSideList(markers.filter(function(x){ return x.visible; }));
+};
+
+updateProgress();
+
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var m = !kw || e.station.name.toLowerCase().indexOf(kw)>=0 || e.station.origAddr.toLowerCase().indexOf(kw)>=0;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var isDone = !!doneSet[e.idx];
+    var d = document.createElement('div');
+    d.className = 'side-item' + (isDone ? ' done' : '');
+    d.innerHTML =
+      '<div class="si-check">' + (isDone ? '✅' : '⬜') + '</div>' +
+      '<div class="si-text">' +
+        '<div class="si-name' + (isDone ? ' done' : '') + '">' + e.station.name + '</div>' +
+        '<div class="si-addr">' + e.station.origAddr + '</div>' +
+      '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>
