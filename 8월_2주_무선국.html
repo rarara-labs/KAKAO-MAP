@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>8월 2주 무선국 - 무선국 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#1a237e,#3949ab);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:16px; font-weight:bold; flex:1; }
+    #progress-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px; white-space:nowrap;
+    }
+    #toolbar {
+      background:white; padding:8px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #c5cae9; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#3949ab; }
+    #btn-fit {
+      background:#3949ab; color:white; border:none;
+      border-radius:16px; padding:8px 12px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 108px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#e8eaf6;
+      font-size:12px; font-weight:bold; color:#3949ab;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+      display:flex; align-items:flex-start; gap:8px;
+    }
+    .side-item:hover { background:#e8eaf6; }
+    .side-item.done { background:#f1fdf4; }
+    .si-check { font-size:18px; padding-top:1px; }
+    .si-text { flex:1; }
+    .si-name { font-size:13px; font-weight:bold; color:#1a237e; word-break:break-all; }
+    .si-name.done { color:#888; text-decoration:line-through; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    .si-subs { font-size:11px; color:#5c6bc0; margin-top:3px; font-style:italic; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 108px); width:100%; }
+    }
+    /* 팝업 스타일 */
+    .popup-name { font-size:13px; font-weight:bold; color:#1a237e; margin-bottom:3px; word-break:break-all; }
+    .popup-badge {
+      display:inline-block; font-size:10px; font-weight:bold;
+      padding:1px 6px; border-radius:8px; margin-bottom:6px;
+    }
+    .badge-rep { background:#e8eaf6; color:#3949ab; }
+    .badge-solo { background:#e8f5e9; color:#2e7d32; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:6px; }
+    /* 서브 국소 메모 박스 */
+    .popup-subs {
+      background:#f3f4ff;
+      border-left:3px solid #3949ab;
+      border-radius:0 6px 6px 0;
+      padding:7px 10px;
+      margin-bottom:8px;
+    }
+    .popup-subs-title {
+      font-size:11px; font-weight:bold; color:#3949ab; margin-bottom:4px;
+    }
+    .popup-sub-item {
+      font-size:11px; color:#333; padding:2px 0;
+      border-bottom:1px solid #e0e3ff;
+      word-break:break-all;
+    }
+    .popup-sub-item:last-child { border-bottom:none; }
+    .popup-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+      cursor:pointer; border:none;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#1a237e; color:white; }
+    .btn-done { background:#2e7d32; color:white; width:100%; margin-top:4px; }
+    .btn-undone { background:#e0e0e0; color:#555; width:100%; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:18px">📡</span>
+  <h1>8월 2주 무선국</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;white-space:nowrap;">← 목록</a>
+  <div id="progress-badge">완료 0/35</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="호출명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (35)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "SKL위드필스카이오피스텔_LH_F1", "lat": 35.0702597314492, "lng": 128.06656210622, "origAddr": "사천시 사남면 유천리 886 사천위드필스카이  (유천리)", "type": "대표", "subs": [{"name": "SKL위드필스카이오피스텔_LH_F5", "origAddr": "사천시 사남면 유천리 886 사천위드필스카이  (유천리)"}, {"name": "SK위드필스카이오피스텔_WLH", "origAddr": "사천시 사남면 유천리 886 사천위드필스카이  (유천리)"}]}, {"name": "공동망_SKG사천유천6AAU_1_2", "lat": 35.0704909890801, "lng": 128.061911724319, "origAddr": "사천시 사남면 유천리 916 나대지", "type": "단독", "subs": []}, {"name": "공동망_SKG사천유천4AAU_1_2", "lat": 35.0742476593107, "lng": 128.066260204229, "origAddr": "사천시 사남면 유천리 926 나대지", "type": "단독", "subs": []}, {"name": "SKL사남농공단지5LRRU_F2", "lat": 35.0569972306559, "lng": 128.044366943896, "origAddr": "사천시 사남면 초전리 1990 나대지", "type": "단독", "subs": []}, {"name": "SKL사천금곡저수지RU", "lat": 35.0954900311561, "lng": 128.158110066527, "origAddr": "사천시 사천읍 금곡리 산5-1", "type": "단독", "subs": []}, {"name": "SKL사천두량5LRRU_F4", "lat": 35.1013331900216, "lng": 128.125925809669, "origAddr": "사천시 사천읍 두량리 675-4 (두량리)", "type": "단독", "subs": []}, {"name": "SK사주리FDW", "lat": 35.0678498808139, "lng": 128.078688520187, "origAddr": "사천시 사천읍 사주리 142-3", "type": "단독", "subs": []}, {"name": "SKL사천공군부대2-1LRRU_F3", "lat": 35.0847724532422, "lng": 128.07775853229, "origAddr": "사천시 사천읍 사주리 263-1", "type": "대표", "subs": [{"name": "SKL사천공군부대2LRRU_F3", "origAddr": "사천시 사천읍 사주리 263-1"}]}, {"name": "SKL사천토성에어빌104동LTROM", "lat": 35.0840276753018, "lng": 128.082496087996, "origAddr": "사천시 사천읍 사주리 263-8", "type": "대표", "subs": [{"name": "SKL사천토성에어빌104동LTRO", "origAddr": "사천시 사천읍 사주리 263-8"}, {"name": "SK사천토성에어빌104동WTRO", "origAddr": "사천시 사천읍 사주리 263-8"}]}, {"name": "SKL사천시외버스주차장LTRO", "lat": 35.0782205063812, "lng": 128.096090384066, "origAddr": "사천시 사천읍 선인리 315-2", "type": "대표", "subs": [{"name": "SKL사천시외버스주차장LTROM", "origAddr": "사천시 사천읍 선인리 315-2"}, {"name": "SK사천시외버스주차장WTRO", "origAddr": "사천시 사천읍 선인리 315-2"}]}, {"name": "SK사천선인4WMC", "lat": 35.0860096075456, "lng": 128.097900321332, "origAddr": "사천시 사천읍 선인리 639-8 (선인리)", "type": "단독", "subs": []}, {"name": "공동망_SKG사천장전AAU_1", "lat": 35.1054145056134, "lng": 128.146293078465, "origAddr": "사천시 사천읍 장전리 10-5 나대지", "type": "단독", "subs": []}, {"name": "공동망_SKG사천3터널AAU_1_2", "lat": 35.1009092614998, "lng": 128.15116023873, "origAddr": "사천시 사천읍 장전리 200 나대지", "type": "단독", "subs": []}, {"name": "SK사천서금3LRRU_FW", "lat": 34.9250851180812, "lng": 128.074828166203, "origAddr": "사천시 서금동 143-1 크로바모텔", "type": "대표", "subs": [{"name": "SKL사천서금3LRRU_FW2", "origAddr": "사천시 서금동 143-1 크로바모텔"}, {"name": "SKL사천서금3LRRU_FW3", "origAddr": "사천시 서금동 143-1 크로바모텔"}]}, {"name": "SKL사천구랑8LRRU_F2", "lat": 35.0182127072098, "lng": 128.00463912968, "origAddr": "사천시 서포면 구랑리 42-2 나대지", "type": "단독", "subs": []}, {"name": "SKL사천구평5LRRU", "lat": 35.0124026141754, "lng": 127.968368638955, "origAddr": "사천시 서포면 구평리 산81-2", "type": "단독", "subs": []}, {"name": "SK사천송포3LRRU_FW", "lat": 34.9711029942322, "lng": 128.052928855648, "origAddr": "사천시 송포동 1102 송천마을복지관", "type": "대표", "subs": [{"name": "SKL사천송포3LRRU_FW2", "origAddr": "사천시 송포동 1102 송천마을복지관"}]}, {"name": "SKL사천송포6LRRU_FW3", "lat": 34.9655201364811, "lng": 128.044263473346, "origAddr": "사천시 송포동 1336-3 나대지", "type": "대표", "subs": [{"name": "SKG사천송포6AAU_1", "origAddr": "사천시 송포동 1339-3 나대지"}, {"name": "SK사천송포6LRRU_FW", "origAddr": "사천시 송포동 1339-3 나대지"}, {"name": "SKL사천송포6LRRU_FW2", "origAddr": "사천시 송포동 1339-3 나대지"}, {"name": "SKG사천송포PRU_1", "origAddr": "사천시 송포동 1460-13 나대지"}]}, {"name": "SK사천송포LRRU_FW", "lat": 34.9558529760339, "lng": 128.037105433903, "origAddr": "사천시 송포동 1460-13 나대지", "type": "대표", "subs": [{"name": "SKL사천송포LRRU_FW2", "origAddr": "사천시 송포동 1460-13 나대지"}, {"name": "SKL사천송포LRRU_FW3", "origAddr": "사천시 송포동 1460-13 나대지"}, {"name": "SKG사천송포7AAU_1_2", "origAddr": "사천시 송포동 1509-1 남양궁전모텔"}]}, {"name": "SK사천송포7LRRU_FW", "lat": 34.967728419585, "lng": 128.065131675668, "origAddr": "사천시 송포동 1509-1 남양궁전모텔", "type": "대표", "subs": [{"name": "SKL사천송포7LRRU_FW2", "origAddr": "사천시 송포동 1509-1 남양궁전모텔"}, {"name": "SKL사천송포7LRRU_FW3", "origAddr": "사천시 송포동 1509-1 남양궁전모텔"}, {"name": "SK사천송포LRRU0_FW", "origAddr": "사천시 송포동 277-3"}]}, {"name": "SKL사천송포LRRU0_FW2", "lat": 34.968724201571, "lng": 128.06337446889, "origAddr": "사천시 송포동 277-3", "type": "대표", "subs": [{"name": "SKL사천송포LRRU0_FW3", "origAddr": "사천시 송포동 277-3"}]}, {"name": "SK진주왕지WMC", "lat": 35.2348156297919, "lng": 128.045832551253, "origAddr": "진주시 명석면 관지리 96-6", "type": "단독", "subs": []}, {"name": "SKL진주덕곡4RU", "lat": 35.2680160327292, "lng": 128.024000373258, "origAddr": "진주시 명석면 덕곡리 599", "type": "단독", "subs": []}, {"name": "SKL진주신기6LRRU_F2", "lat": 35.2900824264166, "lng": 128.031929654577, "origAddr": "진주시 명석면 신기리 455 나대지", "type": "단독", "subs": []}, {"name": "SK진주오미9WMC", "lat": 35.2537383682462, "lng": 127.981269802761, "origAddr": "진주시 명석면 오미리 1180", "type": "단독", "subs": []}, {"name": "공동망_SKG진주명석(기)AAU_1-4", "lat": 35.2439130278173, "lng": 127.995941073562, "origAddr": "진주시 명석면 오미리 34-13, 나대지  (오미리)", "type": "단독", "subs": []}, {"name": "공동망_SKG진주오미3AAU_1_2", "lat": 35.2468399015015, "lng": 127.979989982878, "origAddr": "진주시 명석면 오미리 산210-14 나대지", "type": "단독", "subs": []}, {"name": "SK오미리WMC", "lat": 35.2648800007975, "lng": 127.975805946556, "origAddr": "진주시 명석면 오미리 산70-4", "type": "대표", "subs": [{"name": "공동망_SKG진주오미AAU1_2", "origAddr": "진주시 명석면 오미리 산70-4 나대지"}]}, {"name": "SK진주오미2WMC", "lat": 35.2588368717258, "lng": 128.002029279586, "origAddr": "진주시 명석면 외율리 산 85-5", "type": "단독", "subs": []}, {"name": "SK진주용산WMC", "lat": 35.231122446618, "lng": 128.030589145014, "origAddr": "진주시 명석면 용산리 169-6", "type": "단독", "subs": []}, {"name": "SK명석터널WMC", "lat": 35.2193188263444, "lng": 128.031288345033, "origAddr": "진주시 명석면 용산리 21-16", "type": "단독", "subs": []}, {"name": "SKL진주용산2MRRU", "lat": 35.2357343885729, "lng": 128.024240949762, "origAddr": "진주시 명석면 용산리 372-3 번지", "type": "단독", "subs": []}, {"name": "SKL진주용산2-2RU", "lat": 35.2452187616017, "lng": 128.013374368039, "origAddr": "진주시 명석면 용산리 634", "type": "단독", "subs": []}, {"name": "SK가화리WMC", "lat": 35.2274049686811, "lng": 128.019774534744, "origAddr": "진주시 명석면 용산리 829-27", "type": "단독", "subs": []}, {"name": "SKL진주용산4LRRU_F2", "lat": 35.2251061350065, "lng": 128.014591024002, "origAddr": "진주시 명석면 용산리 906-2 나대지", "type": "단독", "subs": []}];
+var STORAGE_KEY = 'done_8월_2주_무선국';
+var total = STATIONS.length;
+
+var map = L.map('map').setView([35.12302, 128.04957], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+function makeIcon(done, type) {
+  var bg = done ? '#2e7d32' : (type === '대표' ? '#283593' : '#1a237e');
+  var emoji = done ? '✅' : '📡';
+  var size = type === '대표' ? 32 : 28;
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:' + bg + ';color:white;border-radius:50%;width:' + size + 'px;height:' + size + 'px;display:flex;align-items:center;justify-content:center;font-size:' + (size-14) + 'px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">' + emoji + '</div>',
+    iconSize:[size,size], iconAnchor:[size/2,size/2], popupAnchor:[0,-size/2]
+  });
+}
+
+var doneSet = {};
+try { doneSet = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+function saveDone() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(doneSet)); } catch(e) {}
+  updateProgress();
+}
+
+function updateProgress() {
+  var cnt = Object.keys(doneSet).filter(function(k){ return doneSet[k]; }).length;
+  document.getElementById('progress-badge').textContent = '완료 ' + cnt + '/' + total;
+}
+
+var markers = [];
+
+STATIONS.forEach(function(s, idx) {
+  var done = !!doneSet[idx];
+  var m = L.marker([s.lat, s.lng], {icon: makeIcon(done, s.type)}).addTo(map);
+
+  function buildPopup() {
+    var isDone = !!doneSet[idx];
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+
+    // 배지
+    var badge = s.type === '대표'
+      ? '<span class="popup-badge badge-rep">대표</span>'
+      : (s.type === '단독' ? '<span class="popup-badge badge-solo">단독</span>' : '');
+
+    // 서브 국소 메모 박스 (대표일 때만)
+    var subsHtml = '';
+    if (s.subs && s.subs.length > 0) {
+      var items = s.subs.map(function(sub) {
+        return '<div class="popup-sub-item">📶 ' + sub.name + '</div>';
+      }).join('');
+      subsHtml = '<div class="popup-subs">' +
+        '<div class="popup-subs-title">🔗 함께 수검할 서브 국소 (' + s.subs.length + '개)</div>' +
+        items + '</div>';
+    }
+
+    var doneBtn = isDone
+      ? '<button class="popup-btn btn-undone" onclick="toggleDone(' + idx + ')">↩️ 완료 취소</button>'
+      : '<button class="popup-btn btn-done" onclick="toggleDone(' + idx + ')">✅ 완료</button>';
+
+    return '<div class="popup-name">' + (isDone ? '✅ ' : '📡 ') + s.name + '</div>' +
+      badge +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      subsHtml +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>' + doneBtn;
+  }
+
+  m.bindPopup(buildPopup, {maxWidth:290});
+  markers.push({marker:m, station:s, visible:true, idx:idx});
+});
+
+window.toggleDone = function(idx) {
+  doneSet[idx] = !doneSet[idx];
+  saveDone();
+  var e = markers[idx];
+  e.marker.setIcon(makeIcon(!!doneSet[idx], e.station.type));
+  e.marker.openPopup();
+  renderSideList(markers.filter(function(x){ return x.visible; }));
+};
+
+updateProgress();
+
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var subMatch = e.station.subs && e.station.subs.some(function(sub) {
+      return sub.name.toLowerCase().indexOf(kw) >= 0;
+    });
+    var m = !kw
+      || e.station.name.toLowerCase().indexOf(kw) >= 0
+      || e.station.origAddr.toLowerCase().indexOf(kw) >= 0
+      || subMatch;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var isDone = !!doneSet[e.idx];
+    var d = document.createElement('div');
+    d.className = 'side-item' + (isDone ? ' done' : '');
+    var subsInfo = (e.station.subs && e.station.subs.length > 0)
+      ? '<div class="si-subs">🔗 서브 ' + e.station.subs.length + '개 포함</div>'
+      : '';
+    d.innerHTML =
+      '<div class="si-check">' + (isDone ? '✅' : '⬜') + '</div>' +
+      '<div class="si-text">' +
+        '<div class="si-name' + (isDone ? ' done' : '') + '">' + e.station.name + '</div>' +
+        '<div class="si-addr">' + e.station.origAddr + '</div>' +
+        subsInfo +
+      '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>
