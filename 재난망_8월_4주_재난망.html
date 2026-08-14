@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>8월 4주 재난망 재난망 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#bf360c,#e64a19);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:16px; font-weight:bold; flex:1; }
+    #progress-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px; white-space:nowrap;
+    }
+    #toolbar {
+      background:white; padding:8px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #ffccbc; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#e64a19; }
+    #btn-fit {
+      background:#e64a19; color:white; border:none;
+      border-radius:16px; padding:8px 12px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 108px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#fbe9e7;
+      font-size:12px; font-weight:bold; color:#bf360c;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+      display:flex; align-items:center; gap:8px;
+    }
+    .side-item:hover { background:#fbe9e7; }
+    .side-item.done { background:#f1fdf4; }
+    .si-text { flex:1; }
+    .si-name { font-size:13px; font-weight:bold; color:#bf360c; word-break:break-all; }
+    .si-name.done { color:#888; text-decoration:line-through; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    .si-check { font-size:18px; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 108px); width:100%; }
+    }
+    .popup-name { font-size:13px; font-weight:bold; color:#bf360c; margin-bottom:4px; word-break:break-all; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:8px; }
+    .popup-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+      cursor:pointer; border:none;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#bf360c; color:white; }
+    .btn-done { background:#2e7d32; color:white; width:100%; margin-top:4px; }
+    .btn-undone { background:#e0e0e0; color:#555; width:100%; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:18px">🚨</span>
+  <h1>8월 4주 재난망 재난망</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;white-space:nowrap;">← 목록</a>
+  <div id="progress-badge">완료 0/39</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="호출명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (39)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "재난안전_경남_산청IC-PS-RU", "lat": 35.4236669015641, "lng": 127.861623818625, "origAddr": "경상남도 산청군 금서면 매촌리 395"}, {"name": "재난안전_경남_산청자혜3-PS-RU", "lat": 35.4410172513494, "lng": 127.77583610916, "origAddr": "경상남도 산청군 금서면 자혜리 735"}, {"name": "재난안전_경남_산청홍계2-PS-RU", "lat": 35.3869750480694, "lng": 127.848406276755, "origAddr": "경상남도 산청군 금서면 지막리 산158-2"}, {"name": "재난안전_경남_산청한방엑스포-PS-RU", "lat": 35.4395492774867, "lng": 127.825516161238, "origAddr": "경상남도 산청군 금서면 특리 1300-40"}, {"name": "재난안전_경남_산청금서-PS-RU", "lat": 35.4543224678975, "lng": 127.836898768981, "origAddr": "경상남도 산청군 금서면 특리 산 24-3"}, {"name": "재난안전_경남_산청금서2-PS-RU", "lat": 35.4064396836818, "lng": 127.842744034303, "origAddr": "경상남도 산청군 금서면 평촌리 896"}, {"name": "재난안전_경남_산청내리4-PS-RU", "lat": 35.389664351801, "lng": 127.879505888467, "origAddr": "경상남도 산청군 산청읍 내리 산148-3"}, {"name": "재난안전_경남_산청내리2-PS-RU", "lat": 35.4045579552042, "lng": 127.873646518559, "origAddr": "경상남도 산청군 산청읍 내리 산232-17"}, {"name": "재난안전_경남_산청모고-PS-RU", "lat": 35.4383606062723, "lng": 127.895747492348, "origAddr": "경상남도 산청군 산청읍 모고리 269-1"}, {"name": "재난안전_경남_산청모고-PS-ICS", "lat": 35.4425445639606, "lng": 127.904375233649, "origAddr": "경상남도 산청군 산청읍 모고리 산36-12"}, {"name": "재난안전_경남_산청3-PS-RU", "lat": 35.3908726258382, "lng": 127.909425248315, "origAddr": "경상남도 산청군 산청읍 범학리 1100-1"}, {"name": "재난안전_경남_산청부리-PS-RU", "lat": 35.4126438960317, "lng": 127.898250826603, "origAddr": "경상남도 산청군 산청읍 부리 492-1"}, {"name": "재난안전_경남_산청송경-PS-ICS", "lat": 35.4568682124249, "lng": 127.912676587215, "origAddr": "경상남도 산청군 산청읍 송경리 산 70-1"}, {"name": "재난안전_경남_산청송경-PS-RU", "lat": 35.4484225005976, "lng": 127.914167383983, "origAddr": "경상남도 산청군 산청읍 송경리 산94-1"}, {"name": "재난안전_경남_산청지리-PS-RU", "lat": 35.4203254071386, "lng": 127.883166286858, "origAddr": "경상남도 산청군 산청읍 지리 623-1"}, {"name": "재난안전_경남_산청척지2-PS-RU", "lat": 35.4039075281424, "lng": 127.942929166931, "origAddr": "경상남도 산청군 산청읍 척지리 307"}, {"name": "재난안전_경남_산청대하-PS-RU", "lat": 35.2905401292996, "lng": 127.831228005965, "origAddr": "경상남도 산청군 삼장면 대하리 산45"}, {"name": "재난안전_경남_산청삼장-PS-RU", "lat": 35.3370077734271, "lng": 127.836550628188, "origAddr": "경상남도 산청군 삼장면 석남리 290-1"}, {"name": "재난안전_경남_산청대원사-PS-RU", "lat": 35.3645953285637, "lng": 127.810811140535, "origAddr": "경상남도 산청군 삼장면 유평리 산3-1"}, {"name": "재난안전_경남_산청홍계3-PS-RU", "lat": 35.3739488087279, "lng": 127.852148897652, "origAddr": "경상남도 산청군 삼장면 홍계리 산 105-1"}, {"name": "재난안전_경남_산청가술3-PS-RU", "lat": 35.401964167998, "lng": 128.017367442706, "origAddr": "경상남도 산청군 신등면 가술리 869-8"}, {"name": "재난안전_경남_산청신등가술-PS-ICS", "lat": 35.4088353020491, "lng": 128.011165901652, "origAddr": "경상남도 산청군 신등면 가술리 산 17"}, {"name": "재난안전_경남_산청모례2-PS-ICS", "lat": 35.4039830927497, "lng": 127.967112407907, "origAddr": "경상남도 산청군 신등면 모례리 1287"}, {"name": "재난안전_경남_산청모례-PS-RU", "lat": 35.3979657402076, "lng": 127.976739124919, "origAddr": "경상남도 산청군 신등면 모례리 산47-1"}, {"name": "재난안전_경남_산청신등사정-PS-ICS", "lat": 35.4002140819485, "lng": 128.03153095518, "origAddr": "경상남도 산청군 신등면 사정리 721"}, {"name": "재난안전_경남_산청율현2-PS-RU", "lat": 35.4273576904517, "lng": 127.961591650601, "origAddr": "경상남도 산청군 신등면 율현리 1152-9"}, {"name": "재난안전_경남_산청신안2-PS-RU", "lat": 35.3194011939045, "lng": 127.958443776162, "origAddr": "경상남도 산청군 신안면 신안리 88-4"}, {"name": "재난안전_경남_산청신등-PS-RU", "lat": 35.3805880794525, "lng": 128.006611058393, "origAddr": "경상남도 산청군 신안면 외고리 170-1"}, {"name": "재난안전_경남_산청외송3-PS-RU", "lat": 35.3647345292448, "lng": 127.917352590131, "origAddr": "경상남도 산청군 신안면 외송리 1144-3"}, {"name": "재난안전_경남_산청신안-PS-RU", "lat": 35.3380732844205, "lng": 128.011834414349, "origAddr": "경상남도 산청군 신안면 장죽리 183-3"}, {"name": "재난안전_경남_산청청현-PS-RU", "lat": 35.3173567253708, "lng": 128.015276335263, "origAddr": "경상남도 산청군 신안면 청현리 산95-1"}, {"name": "재난안전_경남_산청신안4-PS-RU", "lat": 35.3015664010056, "lng": 127.974667007491, "origAddr": "경상남도 산청군 신안면 하정리 630-15"}, {"name": "재난안전_경남_산청신기-PS-ICS", "lat": 35.3066248766439, "lng": 127.990192084254, "origAddr": "경상남도 산청군 신안면 하정리 산 111-1"}, {"name": "재난안전_경남_산청하정7-PS-RU", "lat": 35.2981232601853, "lng": 127.991719435308, "origAddr": "경상남도 산청군 신안면 하정리 산 134-7"}, {"name": "재난안전_경남_산청하정2-PS-RU", "lat": 35.3093398781002, "lng": 127.984214910768, "origAddr": "경상남도 산청군 신안면 하정리 산 80"}, {"name": "재난안전_경남_산청하정-PS-ICS", "lat": 35.3165398565406, "lng": 127.990615445251, "origAddr": "경상남도 산청군 신안면 하정리 산 89-7"}, {"name": "재난안전_경남_산청차황2-PS-RU", "lat": 35.4964016041048, "lng": 127.933297707924, "origAddr": "경상남도 산청군 차황면 실매리 460-1"}, {"name": "재난안전_경남_산청우사-PS-RU", "lat": 35.4540293344314, "lng": 127.94511200601, "origAddr": "경상남도 산청군 차황면 우사리 474"}, {"name": "재난안전_경남_산청장위3-PS-RU", "lat": 35.4607499731782, "lng": 127.913944528699, "origAddr": "경상남도 산청군 차황면 장위리 773-2"}];
+var STORAGE_KEY = '재난망_8월_4주_재난망_done';
+var total = STATIONS.length;
+
+var map = L.map('map').setView([35.39051, 127.92140], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+function makeIcon(done) {
+  var bg = done ? '#2e7d32' : '#bf360c';
+  var emoji = done ? '✅' : '🚨';
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:' + bg + ';color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">' + emoji + '</div>',
+    iconSize:[28,28], iconAnchor:[14,14], popupAnchor:[0,-15]
+  });
+}
+
+var doneSet = {};
+try { doneSet = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+function saveDone() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(doneSet)); } catch(e) {}
+  updateProgress();
+}
+
+function updateProgress() {
+  var cnt = Object.keys(doneSet).filter(function(k){ return doneSet[k]; }).length;
+  document.getElementById('progress-badge').textContent = '완료 ' + cnt + '/' + total;
+}
+
+var markers = [];
+
+STATIONS.forEach(function(s, idx) {
+  var done = !!doneSet[idx];
+  var m = L.marker([s.lat, s.lng], {icon: makeIcon(done)}).addTo(map);
+
+  function buildPopup() {
+    var isDone = !!doneSet[idx];
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+    var doneBtn = isDone
+      ? '<button class="popup-btn btn-undone" onclick="toggleDone(' + idx + ')">↩️ 완료 취소</button>'
+      : '<button class="popup-btn btn-done" onclick="toggleDone(' + idx + ')">✅ 완료</button>';
+    return '<div class="popup-name">' + (isDone ? '✅ ' : '🚨 ') + s.name + '</div>' +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>' + doneBtn;
+  }
+
+  m.bindPopup(buildPopup, {maxWidth:270});
+  markers.push({marker:m, station:s, visible:true, idx:idx});
+});
+
+window.toggleDone = function(idx) {
+  doneSet[idx] = !doneSet[idx];
+  saveDone();
+  var e = markers[idx];
+  e.marker.setIcon(makeIcon(!!doneSet[idx]));
+  e.marker.openPopup();
+  renderSideList(markers.filter(function(x){ return x.visible; }));
+};
+
+updateProgress();
+
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var m = !kw || e.station.name.toLowerCase().indexOf(kw)>=0 || e.station.origAddr.toLowerCase().indexOf(kw)>=0;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var isDone = !!doneSet[e.idx];
+    var d = document.createElement('div');
+    d.className = 'side-item' + (isDone ? ' done' : '');
+    d.innerHTML =
+      '<div class="si-check">' + (isDone ? '✅' : '⬜') + '</div>' +
+      '<div class="si-text">' +
+        '<div class="si-name' + (isDone ? ' done' : '') + '">' + e.station.name + '</div>' +
+        '<div class="si-addr">' + e.station.origAddr + '</div>' +
+      '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>
