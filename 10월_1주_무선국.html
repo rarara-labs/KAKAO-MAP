@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>10월 1주 무선국 - 무선국 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#1a237e,#3949ab);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:16px; font-weight:bold; flex:1; }
+    #progress-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px; white-space:nowrap;
+    }
+    #toolbar {
+      background:white; padding:8px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #c5cae9; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#3949ab; }
+    #btn-fit {
+      background:#3949ab; color:white; border:none;
+      border-radius:16px; padding:8px 12px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 108px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#e8eaf6;
+      font-size:12px; font-weight:bold; color:#3949ab;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+      display:flex; align-items:flex-start; gap:8px;
+    }
+    .side-item:hover { background:#e8eaf6; }
+    .side-item.done { background:#f1fdf4; }
+    .si-check { font-size:18px; padding-top:1px; }
+    .si-text { flex:1; }
+    .si-name { font-size:13px; font-weight:bold; color:#1a237e; word-break:break-all; }
+    .si-name.done { color:#888; text-decoration:line-through; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    .si-subs { font-size:11px; color:#5c6bc0; margin-top:3px; font-style:italic; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 108px); width:100%; }
+    }
+    /* 팝업 스타일 */
+    .popup-name { font-size:13px; font-weight:bold; color:#1a237e; margin-bottom:3px; word-break:break-all; }
+    .popup-badge {
+      display:inline-block; font-size:10px; font-weight:bold;
+      padding:1px 6px; border-radius:8px; margin-bottom:6px;
+    }
+    .badge-rep { background:#e8eaf6; color:#3949ab; }
+    .badge-solo { background:#e8f5e9; color:#2e7d32; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:6px; }
+    /* 서브 국소 메모 박스 */
+    .popup-subs {
+      background:#f3f4ff;
+      border-left:3px solid #3949ab;
+      border-radius:0 6px 6px 0;
+      padding:7px 10px;
+      margin-bottom:8px;
+    }
+    .popup-subs-title {
+      font-size:11px; font-weight:bold; color:#3949ab; margin-bottom:4px;
+    }
+    .popup-sub-item {
+      font-size:11px; color:#333; padding:2px 0;
+      border-bottom:1px solid #e0e3ff;
+      word-break:break-all;
+    }
+    .popup-sub-item:last-child { border-bottom:none; }
+    .popup-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+      cursor:pointer; border:none;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#1a237e; color:white; }
+    .btn-done { background:#2e7d32; color:white; width:100%; margin-top:4px; }
+    .btn-undone { background:#e0e0e0; color:#555; width:100%; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:18px">📡</span>
+  <h1>10월 1주 무선국</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;white-space:nowrap;">← 목록</a>
+  <div id="progress-badge">완료 0/30</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="호출명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (30)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "SKL의령서동RUF", "lat": 35.3213599890048, "lng": 128.24843989434, "origAddr": "의령군 가례면 가례리 195-3", "type": "단독", "subs": []}, {"name": "SKL의령가례리2RU", "lat": 35.3263291320746, "lng": 128.243137519376, "origAddr": "의령군 가례면 가례리 446", "type": "단독", "subs": []}, {"name": "SKL의령가례3RUF", "lat": 35.3286675136045, "lng": 128.246720494512, "origAddr": "의령군 가례면 가례리 560-2", "type": "단독", "subs": []}, {"name": "SKL의령가례RUF", "lat": 35.3253884256681, "lng": 128.238295686713, "origAddr": "의령군 가례면 가례리 625-2", "type": "단독", "subs": []}, {"name": "SKL의령갑을RUF", "lat": 35.3856885169353, "lng": 128.214996047452, "origAddr": "의령군 가례면 갑을리 산144-1", "type": "단독", "subs": []}, {"name": "SKL가례개승RUF", "lat": 35.380344006452, "lng": 128.231158007248, "origAddr": "의령군 가례면 개승리 293-1", "type": "단독", "subs": []}, {"name": "SKL의령자굴산수련원RUF", "lat": 35.3827911220086, "lng": 128.224336335286, "origAddr": "의령군 가례면 개승리 499-2", "type": "단독", "subs": []}, {"name": "SKL의령개승3RUF", "lat": 35.3796895688056, "lng": 128.224021400327, "origAddr": "의령군 가례면 개승리 산130-10", "type": "단독", "subs": []}, {"name": "SKL의령괴진RUF", "lat": 35.3586772828682, "lng": 128.244234218268, "origAddr": "의령군 가례면 괴진리 199-2", "type": "단독", "subs": []}, {"name": "SKL의령대천RUF", "lat": 35.3346942376018, "lng": 128.2204671597, "origAddr": "의령군 가례면 대천리 산51-1", "type": "단독", "subs": []}, {"name": "SKL의령수성RUF", "lat": 35.3336726968173, "lng": 128.244864636095, "origAddr": "의령군 가례면 수성리 333-6", "type": "단독", "subs": []}, {"name": "SKL의령가례LRRU0F", "lat": 35.3859316604116, "lng": 128.231277913659, "origAddr": "의령군 가례면 양성리 578", "type": "단독", "subs": []}, {"name": "SKL의령운암2RUF", "lat": 35.330158286809, "lng": 128.226404006858, "origAddr": "의령군 가례면 운암리 122-2", "type": "단독", "subs": []}, {"name": "SKL의령낙서LRRU0F", "lat": 35.5067083564824, "lng": 128.385357043606, "origAddr": "의령군 낙서면 아근리 13-4", "type": "단독", "subs": []}, {"name": "SKL낙서정곡2RU", "lat": 35.4696229282136, "lng": 128.400074266442, "origAddr": "의령군 낙서면 정곡리 510-4", "type": "단독", "subs": []}, {"name": "SKL의령동동RUF", "lat": 35.3137680697232, "lng": 128.275828512807, "origAddr": "의령군 의령읍 동동리 104", "type": "단독", "subs": []}, {"name": "SKL의령동동백야교RUF", "lat": 35.3180119094553, "lng": 128.279378417235, "origAddr": "의령군 의령읍 동동리 1494-124", "type": "단독", "subs": []}, {"name": "SKL의령동동운동장RUF", "lat": 35.3145695891492, "lng": 128.270390881392, "origAddr": "의령군 의령읍 동동리 1555", "type": "단독", "subs": []}, {"name": "SKTTL의령동동2RU", "lat": 35.3245190044636, "lng": 128.274259008885, "origAddr": "의령군 의령읍 동동리 414-13", "type": "단독", "subs": []}, {"name": "SKL칠곡내조RUF", "lat": 35.3535424874882, "lng": 128.194367570661, "origAddr": "의령군 칠곡면 내조리 425-3", "type": "단독", "subs": []}, {"name": "SKL의령내조자골산CCLTRO", "lat": 35.3414337236456, "lng": 128.192640495476, "origAddr": "의령군 칠곡면 내조리 산113", "type": "대표", "subs": [{"name": "SKL의령내조자골산CCLTROM", "origAddr": "의령군 칠곡면 내조리 산113"}, {"name": "SK의령내조자골산CCLWTRO", "origAddr": "의령군 칠곡면 내조리 산113"}]}, {"name": "SKL의령내조자골산CC2LTRO", "lat": 35.3604937112681, "lng": 128.18275412787, "origAddr": "의령군 칠곡면 내조리 산117", "type": "대표", "subs": [{"name": "SKL의령내조자골산CC2LTROM", "origAddr": "의령군 칠곡면 내조리 산117"}, {"name": "SK의령내조자골산CC2WTRO", "origAddr": "의령군 칠곡면 내조리 산117"}]}, {"name": "SKTL의령신전3RU", "lat": 35.3714295320748, "lng": 128.184515234457, "origAddr": "의령군 칠곡면 내조리 산19-1", "type": "대표", "subs": [{"name": "SKTL의령신전3RUM", "origAddr": "의령군 칠곡면 내조리 산19-1"}]}, {"name": "SKL의령도산RUF", "lat": 35.3360886982685, "lng": 128.175774300999, "origAddr": "의령군 칠곡면 도산리 704-8", "type": "단독", "subs": []}, {"name": "SKL의령칠곡2LRRU0F", "lat": 35.3515358420642, "lng": 128.154626641817, "origAddr": "의령군 칠곡면 산북리 산 161-1", "type": "단독", "subs": []}, {"name": "SKL의령신포3RUF", "lat": 35.3315217333239, "lng": 128.19962897027, "origAddr": "의령군 칠곡면 신포리 229-2", "type": "단독", "subs": []}, {"name": "SKL의령칠곡LRRU0F", "lat": 35.3388868171981, "lng": 128.193463743008, "origAddr": "의령군 칠곡면 신포리 551-4", "type": "단독", "subs": []}, {"name": "SKL칠곡신포RUF", "lat": 35.3356271384936, "lng": 128.203586894744, "origAddr": "의령군 칠곡면 신포리 719-12", "type": "단독", "subs": []}, {"name": "SKL의령외조RUF", "lat": 35.3458591183619, "lng": 128.185661129913, "origAddr": "의령군 칠곡면 외조리 641-4", "type": "단독", "subs": []}, {"name": "SKL의령외조2RUF", "lat": 35.3433446507247, "lng": 128.195152637922, "origAddr": "의령군 칠곡면 외조리 71-6", "type": "단독", "subs": []}];
+var STORAGE_KEY = 'done_10월_1주_무선국';
+var total = STATIONS.length;
+
+var map = L.map('map').setView([35.35435, 128.23286], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+function makeIcon(done, type) {
+  var bg = done ? '#2e7d32' : (type === '대표' ? '#283593' : '#1a237e');
+  var emoji = done ? '✅' : '📡';
+  var size = type === '대표' ? 32 : 28;
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:' + bg + ';color:white;border-radius:50%;width:' + size + 'px;height:' + size + 'px;display:flex;align-items:center;justify-content:center;font-size:' + (size-14) + 'px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">' + emoji + '</div>',
+    iconSize:[size,size], iconAnchor:[size/2,size/2], popupAnchor:[0,-size/2]
+  });
+}
+
+var doneSet = {};
+try { doneSet = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+function saveDone() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(doneSet)); } catch(e) {}
+  updateProgress();
+}
+
+function updateProgress() {
+  var cnt = Object.keys(doneSet).filter(function(k){ return doneSet[k]; }).length;
+  document.getElementById('progress-badge').textContent = '완료 ' + cnt + '/' + total;
+}
+
+var markers = [];
+
+STATIONS.forEach(function(s, idx) {
+  var done = !!doneSet[idx];
+  var m = L.marker([s.lat, s.lng], {icon: makeIcon(done, s.type)}).addTo(map);
+
+  function buildPopup() {
+    var isDone = !!doneSet[idx];
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+
+    // 배지
+    var badge = s.type === '대표'
+      ? '<span class="popup-badge badge-rep">대표</span>'
+      : (s.type === '단독' ? '<span class="popup-badge badge-solo">단독</span>' : '');
+
+    // 서브 국소 메모 박스 (대표일 때만)
+    var subsHtml = '';
+    if (s.subs && s.subs.length > 0) {
+      var items = s.subs.map(function(sub) {
+        return '<div class="popup-sub-item">📶 ' + sub.name + '</div>';
+      }).join('');
+      subsHtml = '<div class="popup-subs">' +
+        '<div class="popup-subs-title">🔗 함께 수검할 서브 국소 (' + s.subs.length + '개)</div>' +
+        items + '</div>';
+    }
+
+    var doneBtn = isDone
+      ? '<button class="popup-btn btn-undone" onclick="toggleDone(' + idx + ')">↩️ 완료 취소</button>'
+      : '<button class="popup-btn btn-done" onclick="toggleDone(' + idx + ')">✅ 완료</button>';
+
+    return '<div class="popup-name">' + (isDone ? '✅ ' : '📡 ') + s.name + '</div>' +
+      badge +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      subsHtml +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>' + doneBtn;
+  }
+
+  m.bindPopup(buildPopup, {maxWidth:290});
+  markers.push({marker:m, station:s, visible:true, idx:idx});
+});
+
+window.toggleDone = function(idx) {
+  doneSet[idx] = !doneSet[idx];
+  saveDone();
+  var e = markers[idx];
+  e.marker.setIcon(makeIcon(!!doneSet[idx], e.station.type));
+  e.marker.openPopup();
+  renderSideList(markers.filter(function(x){ return x.visible; }));
+};
+
+updateProgress();
+
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var subMatch = e.station.subs && e.station.subs.some(function(sub) {
+      return sub.name.toLowerCase().indexOf(kw) >= 0;
+    });
+    var m = !kw
+      || e.station.name.toLowerCase().indexOf(kw) >= 0
+      || e.station.origAddr.toLowerCase().indexOf(kw) >= 0
+      || subMatch;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var isDone = !!doneSet[e.idx];
+    var d = document.createElement('div');
+    d.className = 'side-item' + (isDone ? ' done' : '');
+    var subsInfo = (e.station.subs && e.station.subs.length > 0)
+      ? '<div class="si-subs">🔗 서브 ' + e.station.subs.length + '개 포함</div>'
+      : '';
+    d.innerHTML =
+      '<div class="si-check">' + (isDone ? '✅' : '⬜') + '</div>' +
+      '<div class="si-text">' +
+        '<div class="si-name' + (isDone ? ' done' : '') + '">' + e.station.name + '</div>' +
+        '<div class="si-addr">' + e.station.origAddr + '</div>' +
+        subsInfo +
+      '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>
