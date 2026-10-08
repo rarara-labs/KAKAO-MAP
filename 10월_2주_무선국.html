@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>10월 2주 무선국 - 무선국 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#1a237e,#3949ab);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:16px; font-weight:bold; flex:1; }
+    #progress-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px; white-space:nowrap;
+    }
+    #toolbar {
+      background:white; padding:8px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #c5cae9; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#3949ab; }
+    #btn-fit {
+      background:#3949ab; color:white; border:none;
+      border-radius:16px; padding:8px 12px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 108px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#e8eaf6;
+      font-size:12px; font-weight:bold; color:#3949ab;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+      display:flex; align-items:flex-start; gap:8px;
+    }
+    .side-item:hover { background:#e8eaf6; }
+    .side-item.done { background:#f1fdf4; }
+    .si-check { font-size:18px; padding-top:1px; }
+    .si-text { flex:1; }
+    .si-name { font-size:13px; font-weight:bold; color:#1a237e; word-break:break-all; }
+    .si-name.done { color:#888; text-decoration:line-through; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    .si-subs { font-size:11px; color:#5c6bc0; margin-top:3px; font-style:italic; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 108px); width:100%; }
+    }
+    /* 팝업 스타일 */
+    .popup-name { font-size:13px; font-weight:bold; color:#1a237e; margin-bottom:3px; word-break:break-all; }
+    .popup-badge {
+      display:inline-block; font-size:10px; font-weight:bold;
+      padding:1px 6px; border-radius:8px; margin-bottom:6px;
+    }
+    .badge-rep { background:#e8eaf6; color:#3949ab; }
+    .badge-solo { background:#e8f5e9; color:#2e7d32; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:6px; }
+    /* 서브 국소 메모 박스 */
+    .popup-subs {
+      background:#f3f4ff;
+      border-left:3px solid #3949ab;
+      border-radius:0 6px 6px 0;
+      padding:7px 10px;
+      margin-bottom:8px;
+    }
+    .popup-subs-title {
+      font-size:11px; font-weight:bold; color:#3949ab; margin-bottom:4px;
+    }
+    .popup-sub-item {
+      font-size:11px; color:#333; padding:2px 0;
+      border-bottom:1px solid #e0e3ff;
+      word-break:break-all;
+    }
+    .popup-sub-item:last-child { border-bottom:none; }
+    .popup-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+      cursor:pointer; border:none;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#1a237e; color:white; }
+    .btn-done { background:#2e7d32; color:white; width:100%; margin-top:4px; }
+    .btn-undone { background:#e0e0e0; color:#555; width:100%; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:18px">📡</span>
+  <h1>10월 2주 무선국</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;white-space:nowrap;">← 목록</a>
+  <div id="progress-badge">완료 0/50</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="호출명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (50)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "SK산청매촌3WDMPR", "lat": 35.4206615963014, "lng": 127.870566407817, "origAddr": "산청군 금서면 매촌리 259, 산청원임산물영농조합  (매촌리)", "type": "단독", "subs": []}, {"name": "SKT산청수철LRRU_F1", "lat": 35.4048441483139, "lng": 127.826331138307, "origAddr": "산청군 금서면 수철리 406-1", "type": "대표", "subs": [{"name": "SK산청수철WRF", "origAddr": "산청군 금서면 수철리 406-1"}]}, {"name": "SK산청수철3WDMOU", "lat": 35.4055797561825, "lng": 127.813228349865, "origAddr": "산청군 금서면 수철리 843-1", "type": "단독", "subs": []}, {"name": "SKL산청수철2-2LRRU_F2", "lat": 35.4049156000907, "lng": 127.804641461446, "origAddr": "산청군 금서면 수철리 산73-1 나대지", "type": "단독", "subs": []}, {"name": "SKL산청수철2-3LRRU", "lat": 35.4246826880365, "lng": 127.798280311532, "origAddr": "산청군 금서면 자혜리 산101", "type": "단독", "subs": []}, {"name": "공동망_SKTG(고)대통_산청특리3AAU_1-2", "lat": 35.4545333071039, "lng": 127.849628672884, "origAddr": "산청군 금서면 특리 46-1 나대지", "type": "단독", "subs": []}, {"name": "공동망_SKTG(고)대통_산청특리5AAU_1-2", "lat": 35.4372187764129, "lng": 127.853737092724, "origAddr": "산청군 금서면 특리 산158-1 나대지", "type": "단독", "subs": []}, {"name": "SKL산청화계LRRU_F4", "lat": 35.4602745387575, "lng": 127.794487908601, "origAddr": "산청군 금서면 화계리 202-2", "type": "단독", "subs": []}, {"name": "SKL산청당산LRRU_F4(20)", "lat": 35.2446506237765, "lng": 127.895110832431, "origAddr": "산청군 단성면 당산리 430-4, (당산리)", "type": "대표", "subs": [{"name": "SK산청당산WMC", "origAddr": "산청군 단성면 당산리 430-4, (당산리)"}]}, {"name": "공동망_SKTG(고)대통_진주산청묵곡2AAU_1-2", "lat": 35.2790248399015, "lng": 127.970221806009, "origAddr": "산청군 단성면 묵곡리 203, 나대지  (묵곡리)", "type": "단독", "subs": []}, {"name": "공동망_SKTG(고)대통_진주산청묵곡AAU_1-2", "lat": 35.2735405033232, "lng": 127.972671462682, "origAddr": "산청군 단성면 묵곡리 산188-1 나대지", "type": "단독", "subs": []}, {"name": "SKL산청입석LRRU_F1", "lat": 35.3162966820256, "lng": 127.923963733563, "origAddr": "산청군 단성면 방목리 919 나대지", "type": "단독", "subs": []}, {"name": "공동망_SKTG(고)대통_진주산청강수AAU_1-2", "lat": 35.3200750111304, "lng": 127.93970403167, "origAddr": "산청군 단성면 방목리 산109-3 나대지", "type": "단독", "subs": []}, {"name": "공동망_SKTG(고)대통_진주산청방목3AAU_1-2", "lat": 35.3505142219032, "lng": 127.92512103911, "origAddr": "산청군 단성면 방목리 산6-40 나대지", "type": "단독", "subs": []}, {"name": "SKL산청성내2LRRU_F4", "lat": 35.3007635502909, "lng": 127.96180837383, "origAddr": "산청군 단성면 성내리 56-2", "type": "단독", "subs": []}, {"name": "SKL산청소남2-2RUM", "lat": 35.2620565732709, "lng": 127.957168137135, "origAddr": "산청군 단성면 소남리 460-2", "type": "단독", "subs": []}, {"name": "공동망_SKTG(고)대통_진주산청(기)AAU_1-2", "lat": 35.3439560453333, "lng": 127.932967305155, "origAddr": "산청군 단성면 송강길 1-8, 나대지  (방목리)", "type": "단독", "subs": []}, {"name": "SKL산청창촌3LRRU_F4(20)", "lat": 35.2647182379066, "lng": 127.903480333933, "origAddr": "산청군 단성면 창촌리 123-3", "type": "단독", "subs": []}, {"name": "SKL산청지리LRRU_F4", "lat": 35.4140538130171, "lng": 127.877614604635, "origAddr": "산청군 산청읍 덕우지길 9-21, (지리)", "type": "단독", "subs": []}, {"name": "공동망_SKTG(고)대통_산청3(기)AAU_1_3", "lat": 35.3908726258382, "lng": 127.909425248315, "origAddr": "산청군 산청읍 범학리 1100-1 나대지", "type": "단독", "subs": []}, {"name": "공동망_SKTG(고)대통_산청범학4AAU_1-2", "lat": 35.3904918698164, "lng": 127.906602342418, "origAddr": "산청군 산청읍 범학리 961-3 나대지", "type": "단독", "subs": []}, {"name": "SK산청옥산2WMC", "lat": 35.4117920758655, "lng": 127.873269356505, "origAddr": "산청군 산청읍 옥산리 688, (옥산리)", "type": "단독", "subs": []}, {"name": "SK산청대하WMC", "lat": 35.2905401292996, "lng": 127.831228005965, "origAddr": "산청군 삼장면 대하리 산45", "type": "단독", "subs": []}, {"name": "SKL산청대원사LRRU0_F1", "lat": 35.3634149463399, "lng": 127.795301299132, "origAddr": "산청군 삼장면 유평리 89 나대지", "type": "단독", "subs": []}, {"name": "SKL산청도리LRRU_F4", "lat": 35.3450205745571, "lng": 128.047144914464, "origAddr": "산청군 생비량면 도리 615", "type": "단독", "subs": []}, {"name": "SKL산청화현5RUM", "lat": 35.3495073375751, "lng": 128.088168982447, "origAddr": "산청군 생비량면 화현리 산88-1", "type": "단독", "subs": []}, {"name": "SKL산청내공3LRRU_F2", "lat": 35.225328612402, "lng": 127.823961272759, "origAddr": "산청군 시천면 내공리 산 81-6 나대지", "type": "단독", "subs": []}, {"name": "SKL산청마근담학교LRRU_F4", "lat": 35.3186369307608, "lng": 127.858721666594, "origAddr": "산청군 시천면 마근담길 579, (사리)", "type": "단독", "subs": []}, {"name": "SKL산청시천2LRRU_F4", "lat": 35.277389320056, "lng": 127.839384011854, "origAddr": "산청군 시천면 사리 923-11, (사리)", "type": "단독", "subs": []}, {"name": "SKL산청사리3RU", "lat": 35.2945435845954, "lng": 127.85907162246, "origAddr": "산청군 시천면 사리 산31-1", "type": "단독", "subs": []}, {"name": "SKL산청양수발전처IB_LIRO_F2", "lat": 35.2558777979512, "lng": 127.780180867268, "origAddr": "산청군 시천면 신천리 506 산청양수발전처", "type": "대표", "subs": [{"name": "SKL산청양수발전처IB_LIRO_F3", "origAddr": "산청군 시천면 신천리 506 산청양수발전처"}, {"name": "SK산청양수발전처IB_WIRO", "origAddr": "산청군 시천면 신천리 506 산청양수발전처"}]}, {"name": "SKL산청신천2LRRU_F4", "lat": 35.2784085324267, "lng": 127.840576531665, "origAddr": "산청군 시천면 신천리 산187-2", "type": "단독", "subs": []}, {"name": "SKL산청산울펜션LRRU_F2", "lat": 35.2626637721694, "lng": 127.827862402632, "origAddr": "산청군 시천면 원리 782-1 나대지", "type": "단독", "subs": []}, {"name": "SKL산청중산LRRU_F4", "lat": 35.2789541346729, "lng": 127.7745353555, "origAddr": "산청군 시천면 중산리 32-1, (중산리)", "type": "단독", "subs": []}, {"name": "SKL산청중산3LRRU_F4", "lat": 35.2874416315037, "lng": 127.760141939693, "origAddr": "산청군 시천면 중산리 411-8", "type": "단독", "subs": []}, {"name": "SKL산청중산LRRU3_F2", "lat": 35.2921902934493, "lng": 127.758979278651, "origAddr": "산청군 시천면 중산리 492-3 나대지", "type": "단독", "subs": []}, {"name": "SK산청가술가림마을WMC", "lat": 35.3969521505596, "lng": 128.022780430853, "origAddr": "산청군 신등면 가술리 35", "type": "단독", "subs": []}, {"name": "SKL산청단계LRRU_F4", "lat": 35.3780461339052, "lng": 128.01115189963, "origAddr": "산청군 신등면 단계리 660-1, (단계리)", "type": "단독", "subs": []}, {"name": "SKL산청사정2RU", "lat": 35.4071776000627, "lng": 128.040796836803, "origAddr": "산청군 신등면 사정리 128", "type": "단독", "subs": []}, {"name": "SKL산청갈전2RUM", "lat": 35.3511286443852, "lng": 127.98556256141, "origAddr": "산청군 신안면 갈전리 646", "type": "단독", "subs": []}, {"name": "SKL산청외고2LRRU", "lat": 35.3732744896976, "lng": 128.005697678296, "origAddr": "산청군 신안면 외고리 1585-2", "type": "단독", "subs": []}, {"name": "SKL산청신등LRRU0_F4", "lat": 35.3805880794525, "lng": 128.006611058393, "origAddr": "산청군 신안면 외고리 170-1", "type": "단독", "subs": []}, {"name": "SKL산청신안LRRU0_F4", "lat": 35.3034561397921, "lng": 127.973448058501, "origAddr": "산청군 신안면 장죽리 산37", "type": "단독", "subs": []}, {"name": "SK산청대현2WIC", "lat": 35.5071830904236, "lng": 127.907827121669, "origAddr": "산청군 오부면 대현리 420", "type": "단독", "subs": []}, {"name": "SKL산청오부방곡2LRRU_F4", "lat": 35.4691516655914, "lng": 127.879470363678, "origAddr": "산청군 오부면 방곡리 471", "type": "단독", "subs": []}, {"name": "SK산청왕촌WMC", "lat": 35.5190461784464, "lng": 127.893045180386, "origAddr": "산청군 오부면 왕촌리 837, (왕촌리)", "type": "단독", "subs": []}, {"name": "SKL산청실매LRRU_F2", "lat": 35.4868532552113, "lng": 127.949071793277, "origAddr": "산청군 차황면 실매리 산19 나대지", "type": "단독", "subs": []}, {"name": "SK하동횡천역WTRO", "lat": 35.0993430029291, "lng": 127.801059640393, "origAddr": "하동군 횡천면 경서대로 998-12, (남산리)", "type": "대표", "subs": [{"name": "SKL하동횡천역LTRO", "origAddr": "하동군 횡천면 남산리 525-1"}, {"name": "SKL하동횡천역LTROM", "origAddr": "하동군 횡천면 남산리 525-1"}]}, {"name": "SKL하동횡천LRRU_F4", "lat": 35.1081353973569, "lng": 127.810790513736, "origAddr": "하동군 횡천면 문화1길 15", "type": "대표", "subs": [{"name": "SKT하동횡천WMC", "origAddr": "하동군 횡천면 문화1길 15, (횡천리)"}]}, {"name": "SKL하동상월LRRU_F2", "lat": 35.138123780604, "lng": 127.810763956754, "origAddr": "하동군 횡천면 월평리 98-5 나대지", "type": "단독", "subs": []}];
+var STORAGE_KEY = 'done_10월_2주_무선국';
+var total = STATIONS.length;
+
+var map = L.map('map').setView([35.34028, 127.89087], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+function makeIcon(done, type) {
+  var bg = done ? '#2e7d32' : (type === '대표' ? '#283593' : '#1a237e');
+  var emoji = done ? '✅' : '📡';
+  var size = type === '대표' ? 32 : 28;
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:' + bg + ';color:white;border-radius:50%;width:' + size + 'px;height:' + size + 'px;display:flex;align-items:center;justify-content:center;font-size:' + (size-14) + 'px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">' + emoji + '</div>',
+    iconSize:[size,size], iconAnchor:[size/2,size/2], popupAnchor:[0,-size/2]
+  });
+}
+
+var doneSet = {};
+try { doneSet = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+function saveDone() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(doneSet)); } catch(e) {}
+  updateProgress();
+}
+
+function updateProgress() {
+  var cnt = Object.keys(doneSet).filter(function(k){ return doneSet[k]; }).length;
+  document.getElementById('progress-badge').textContent = '완료 ' + cnt + '/' + total;
+}
+
+var markers = [];
+
+STATIONS.forEach(function(s, idx) {
+  var done = !!doneSet[idx];
+  var m = L.marker([s.lat, s.lng], {icon: makeIcon(done, s.type)}).addTo(map);
+
+  function buildPopup() {
+    var isDone = !!doneSet[idx];
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+
+    // 배지
+    var badge = s.type === '대표'
+      ? '<span class="popup-badge badge-rep">대표</span>'
+      : (s.type === '단독' ? '<span class="popup-badge badge-solo">단독</span>' : '');
+
+    // 서브 국소 메모 박스 (대표일 때만)
+    var subsHtml = '';
+    if (s.subs && s.subs.length > 0) {
+      var items = s.subs.map(function(sub) {
+        return '<div class="popup-sub-item">📶 ' + sub.name + '</div>';
+      }).join('');
+      subsHtml = '<div class="popup-subs">' +
+        '<div class="popup-subs-title">🔗 함께 수검할 서브 국소 (' + s.subs.length + '개)</div>' +
+        items + '</div>';
+    }
+
+    var doneBtn = isDone
+      ? '<button class="popup-btn btn-undone" onclick="toggleDone(' + idx + ')">↩️ 완료 취소</button>'
+      : '<button class="popup-btn btn-done" onclick="toggleDone(' + idx + ')">✅ 완료</button>';
+
+    return '<div class="popup-name">' + (isDone ? '✅ ' : '📡 ') + s.name + '</div>' +
+      badge +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      subsHtml +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>' + doneBtn;
+  }
+
+  m.bindPopup(buildPopup, {maxWidth:290});
+  markers.push({marker:m, station:s, visible:true, idx:idx});
+});
+
+window.toggleDone = function(idx) {
+  doneSet[idx] = !doneSet[idx];
+  saveDone();
+  var e = markers[idx];
+  e.marker.setIcon(makeIcon(!!doneSet[idx], e.station.type));
+  e.marker.openPopup();
+  renderSideList(markers.filter(function(x){ return x.visible; }));
+};
+
+updateProgress();
+
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var subMatch = e.station.subs && e.station.subs.some(function(sub) {
+      return sub.name.toLowerCase().indexOf(kw) >= 0;
+    });
+    var m = !kw
+      || e.station.name.toLowerCase().indexOf(kw) >= 0
+      || e.station.origAddr.toLowerCase().indexOf(kw) >= 0
+      || subMatch;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var isDone = !!doneSet[e.idx];
+    var d = document.createElement('div');
+    d.className = 'side-item' + (isDone ? ' done' : '');
+    var subsInfo = (e.station.subs && e.station.subs.length > 0)
+      ? '<div class="si-subs">🔗 서브 ' + e.station.subs.length + '개 포함</div>'
+      : '';
+    d.innerHTML =
+      '<div class="si-check">' + (isDone ? '✅' : '⬜') + '</div>' +
+      '<div class="si-text">' +
+        '<div class="si-name' + (isDone ? ' done' : '') + '">' + e.station.name + '</div>' +
+        '<div class="si-addr">' + e.station.origAddr + '</div>' +
+        subsInfo +
+      '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>
