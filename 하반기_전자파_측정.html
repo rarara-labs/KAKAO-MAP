@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>하반기 전자파 측정 전자파측정 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#b71c1c,#e53935);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:16px; font-weight:bold; flex:1; }
+    #progress-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px; white-space:nowrap;
+    }
+    #toolbar {
+      background:white; padding:8px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #ffcdd2; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#e53935; }
+    #btn-fit {
+      background:#e53935; color:white; border:none;
+      border-radius:16px; padding:8px 12px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 108px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#ffebee;
+      font-size:12px; font-weight:bold; color:#c62828;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+      display:flex; align-items:flex-start; gap:8px;
+    }
+    .side-item:hover { background:#ffebee; }
+    .side-item.done { background:#f1fdf4; }
+    .si-check { font-size:18px; padding-top:1px; }
+    .si-text { flex:1; }
+    .si-name { font-size:13px; font-weight:bold; color:#b71c1c; word-break:break-all; }
+    .si-name.done { color:#888; text-decoration:line-through; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    .si-note { font-size:11px; color:#e53935; margin-top:3px; font-style:italic; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 108px); width:100%; }
+    }
+    /* 마커 라벨 */
+    .marker-label {
+      background:white; border:1.5px solid #e53935; border-radius:4px;
+      padding:1px 5px; font-size:11px; font-weight:bold; color:#b71c1c;
+      white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,0.2);
+    }
+    /* 팝업 */
+    .popup-name { font-size:14px; font-weight:bold; color:#b71c1c; margin-bottom:4px; word-break:break-all; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:6px; }
+    .popup-note {
+      background:#fff8f8; border-left:3px solid #e53935;
+      padding:6px 8px; font-size:12px; color:#333;
+      border-radius:0 4px 4px 0; margin-bottom:8px;
+      white-space:pre-wrap; word-break:break-all;
+    }
+    .popup-note-empty { font-size:12px; color:#bbb; margin-bottom:8px; font-style:italic; }
+    .popup-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+      cursor:pointer; border:none;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#b71c1c; color:white; }
+    .btn-done { background:#2e7d32; color:white; width:100%; margin-top:4px; }
+    .btn-undone { background:#e0e0e0; color:#555; width:100%; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:18px">📻</span>
+  <h1>하반기 전자파 측정 전자파측정</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;white-space:nowrap;">← 목록</a>
+  <div id="progress-badge">완료 0/35</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (35)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "공동망_SKG사천시청2AAU_1_2", "lat": 35.00269474972, "lng": 128.060502775603, "origAddr": "경상남도 사천시 용현면 시청2길9-5 서원레온시티", "note": "322022210006411"}, {"name": "SKG진주강남러브장AAU_1", "lat": 35.1795961677747, "lng": 128.089422741825, "origAddr": "경상남도 진주시 진주대로891번길 11-1 러브장모텔", "note": "322026210002170"}, {"name": "SKGT진주본성AAU1_2", "lat": 35.1911294072098, "lng": 128.082466089892, "origAddr": "경상남도 진주시 남강로 647, 성수장  (본성동)", "note": "322022210003697"}, {"name": "SKG진주고속버스터미널AAU1_2", "lat": 35.1790392439022, "lng": 128.093064927409, "origAddr": "경상남도 진주시 동진로 17 일반", "note": "322023210004821"}, {"name": "SKG진주강남이마트편의점AAU1_3", "lat": 35.1827897853597, "lng": 128.087764192237, "origAddr": "경상남도 진주시 진주대로891번길 49 일반", "note": "322022210011328"}, {"name": "SKGT진주강남AAU1_4", "lat": 35.1863311311335, "lng": 128.087678984968, "origAddr": "경상남도 진주시 진주대로 966 어정수빌딩", "note": "322022210003544"}, {"name": "SKGT진주바른병원AAU1_2", "lat": 35.1791933303553, "lng": 128.091709935511, "origAddr": "경상남도 진주시 동진로 7, 일반  (칠암동)", "note": "322022210009848"}, {"name": "SKG진주경상대(기)-1AAU_1", "lat": 35.1566960501433, "lng": 128.098016965778, "origAddr": "경상남도 진주시 진주대로 501, 경상대중앙도서관  (가좌동)", "note": "322021210011442"}, {"name": "SKG진주강남조타커피AAU_1", "lat": 35.184420727542, "lng": 128.088161275851, "origAddr": "경상남도 진주시 진주대로 945, 일반  (강남동)", "note": "322025210004067"}, {"name": "SKG진주혁신센텀파크AAU1_2", "lat": 35.1749359524801, "lng": 128.148934309107, "origAddr": "경상남도 진주시 사들로 79, 센텀파크빌  (충무공동)", "note": "322019210017816"}, {"name": "SKG진주휴앤인리버파크AAU1_2", "lat": 35.1712274433558, "lng": 128.138543918572, "origAddr": "경상남도 진주시 영천강로 90-2 휴앤인리버파크", "note": "322021210008058"}, {"name": "SKL진주중앙시장공영주차장LRRU1-2_F1", "lat": 35.1940728992092, "lng": 128.085513889598, "origAddr": "경상남도 진주시 진양호로 553 중앙시장  공영주차장", "note": "322026210002879"}, {"name": "SKL진주중앙시장공영주차장LRRU1-2_F2", "lat": 35.1940728992092, "lng": 128.085513889598, "origAddr": "경상남도 진주시 진양호로 553 중앙시장  공영주차장", "note": "322026210002882"}, {"name": "SKL진주중앙시장공영주차장LRRU1-2_FW3", "lat": 35.1940728992092, "lng": 128.085513889598, "origAddr": "경상남도 진주시 진양호로 553 중앙시장  공영주차장", "note": "322026210002885"}, {"name": "SKL진주중앙시장공영주차장LRRU_F5", "lat": 35.1940728992092, "lng": 128.085513889598, "origAddr": "경상남도 진주시 진양호로 553 중앙시장  공영주차장", "note": "322026210002887"}, {"name": "SKTG진주중앙시장공영주차장AAU_1_3", "lat": 35.1940728992092, "lng": 128.085513889598, "origAddr": "경상남도 진주시 진양호로 553 중앙시장  공영주차장", "note": "322023210001864"}, {"name": "SKGT진주중안2AAU1_3", "lat": 35.1924177029494, "lng": 128.081520503438, "origAddr": "경상남도 진주시 비봉로 18, 일반  (중안동)", "note": "322022210003696"}, {"name": "SKL진주신안DK빌딩LRRU_F2", "lat": 35.1860060756234, "lng": 128.069080804611, "origAddr": "경상남도 진주시 진양호로 375 DK빌딩", "note": "322026210002883"}, {"name": "SKG진주칠암5AAU1_3", "lat": 35.1816355287074, "lng": 128.096136632785, "origAddr": "경상남도 진주시 강남로151번길 3, 까치빌  (칠암동)", "note": "322019210001899"}, {"name": "SKG진주주약명성빌딩AAU1_2", "lat": 35.1739345335329, "lng": 128.095729185887, "origAddr": "경상남도 진주시 진주대로816번길 18-1 일반", "note": "322026210003066"}, {"name": "SKL진주주약명성빌딩LRRU_F1", "lat": 35.1739345335329, "lng": 128.095729185887, "origAddr": "경상남도 진주시 진주대로816번길 18-1 일반", "note": "322026210003019"}, {"name": "SKL진주주약명성빌딩LRRU_F2", "lat": 35.1739345335329, "lng": 128.095729185887, "origAddr": "경상남도 진주시 진주대로816번길 18-1 일반", "note": "322026210003020"}, {"name": "SKL진주주약명성빌딩LRRU_FW3", "lat": 35.1739345335329, "lng": 128.095729185887, "origAddr": "경상남도 진주시 진주대로816번길 18-1 일반", "note": "322026210003021"}, {"name": "SKL진주주약명성빌딩LRRU_F5", "lat": 35.1739345335329, "lng": 128.095729185887, "origAddr": "경상남도 진주시 진주대로816번길 18-1 일반", "note": "322026210003022"}, {"name": "SKGT진주주약6AAU1_2", "lat": 35.1753277197743, "lng": 128.092531588045, "origAddr": "경상남도 진주시 진주대로 837, 일반  (주약동)", "note": "322022210009856"}, {"name": "SKG진주칠암12AAU1_2", "lat": 35.1825361026565, "lng": 128.090536511077, "origAddr": "경상남도 진주시 진주대로920번길 12-4, 화광쌍떼빌  (칠암동)", "note": "322021210014432"}, {"name": "SKG진주초전동남빌AAU1_2", "lat": 35.2037518776085, "lng": 128.114626296471, "origAddr": "경상남도 진주시 초장로14번길 6 동남빌", "note": "322026210003070"}, {"name": "SKG진주봉래2AAU1_2", "lat": 35.2011993610168, "lng": 128.083302347767, "origAddr": "경상남도 진주시 봉래길 19-1 일반", "note": "322026210003071"}, {"name": "SKG진주충무공동드림IT밸리AAU1_2", "lat": 35.166947175328, "lng": 128.132901781922, "origAddr": "경상남도 진주시 범골로54번길 30-9, 드림IT밸리  (충무공동)", "note": "322021210008043"}, {"name": "SKG진주성북동주민센터AAU_1", "lat": 35.193306872782, "lng": 128.077056915189, "origAddr": "경상남도 진주시촉석로132번길 3 일반", "note": "322026210003253"}, {"name": "SKG진주수정AAU1_2", "lat": 35.1989979713851, "lng": 128.087049681564, "origAddr": "경상남도 진주시 향교로50번길 2 일반", "note": "322021210003740"}, {"name": "SKG진주신안16PRUAAU1_2", "lat": 35.1838649702966, "lng": 128.064196184447, "origAddr": "경상남도 진주시 석갑로156번길 6 초록빌", "note": "322021210004284"}, {"name": "SKG진주신안4AAU1_2", "lat": 35.1828303635728, "lng": 128.063272716887, "origAddr": "경상남도 진주시 석갑로141번길 2, 일반  (신안동)", "note": "322021210004281"}, {"name": "SKG진주가좌동우체국AAU_1", "lat": 35.1562312020154, "lng": 128.106284310054, "origAddr": "경상남도 진주시 가좌길 14 일반", "note": "322026210003708"}, {"name": "SKG진주초전대성빌딩AAU1_2", "lat": 35.1980474802128, "lng": 128.116065261186, "origAddr": "경상남도 진주시 대신로 419 대성빌딩", "note": "322026210003709"}];
+var STORAGE_KEY = '하반기_전자파_측정_done';
+var total = STATIONS.length;
+
+var map = L.map('map').setView([35.17803, 128.09277], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+function makeIcon(done) {
+  var bg = done ? '#2e7d32' : '#b71c1c';
+  var emoji = done ? '✅' : '📻';
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:' + bg + ';color:white;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">' + emoji + '</div>',
+    iconSize:[28,28], iconAnchor:[14,14], popupAnchor:[0,-15]
+  });
+}
+
+var doneSet = {};
+try { doneSet = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+function saveDone() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(doneSet)); } catch(e) {}
+  updateProgress();
+}
+
+function updateProgress() {
+  var cnt = Object.keys(doneSet).filter(function(k){ return doneSet[k]; }).length;
+  document.getElementById('progress-badge').textContent = '완료 ' + cnt + '/' + total;
+}
+
+var markers = [];
+
+STATIONS.forEach(function(s, idx) {
+  var done = !!doneSet[idx];
+  var m = L.marker([s.lat, s.lng], {icon: makeIcon(done)}).addTo(map);
+
+  // 이름 항상 표시 (permanent tooltip)
+  m.bindTooltip(s.name, {
+    permanent: true,
+    direction: 'top',
+    offset: [0, -16],
+    className: 'marker-label'
+  });
+
+  function buildPopup() {
+    var isDone = !!doneSet[idx];
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+    var noteHtml = s.note
+      ? '<div class="popup-note">📝 ' + s.note + '</div>'
+      : '<div class="popup-note-empty">특이사항 없음</div>';
+    var doneBtn = isDone
+      ? '<button class="popup-btn btn-undone" onclick="toggleDone(' + idx + ')">↩️ 완료 취소</button>'
+      : '<button class="popup-btn btn-done" onclick="toggleDone(' + idx + ')">✅ 완료</button>';
+    return '<div class="popup-name">' + (isDone ? '✅ ' : '📻 ') + s.name + '</div>' +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      noteHtml +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>' + doneBtn;
+  }
+
+  m.bindPopup(buildPopup, {maxWidth:280});
+  markers.push({marker:m, station:s, visible:true, idx:idx});
+});
+
+window.toggleDone = function(idx) {
+  doneSet[idx] = !doneSet[idx];
+  saveDone();
+  var e = markers[idx];
+  e.marker.setIcon(makeIcon(!!doneSet[idx]));
+  e.marker.openPopup();
+  renderSideList(markers.filter(function(x){ return x.visible; }));
+};
+
+updateProgress();
+
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var m = !kw
+      || e.station.name.toLowerCase().indexOf(kw)>=0
+      || e.station.origAddr.toLowerCase().indexOf(kw)>=0
+      || e.station.note.toLowerCase().indexOf(kw)>=0;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var isDone = !!doneSet[e.idx];
+    var d = document.createElement('div');
+    d.className = 'side-item' + (isDone ? ' done' : '');
+    var noteEl = e.station.note ? '<div class="si-note">📝 ' + e.station.note + '</div>' : '';
+    d.innerHTML =
+      '<div class="si-check">' + (isDone ? '✅' : '⬜') + '</div>' +
+      '<div class="si-text">' +
+        '<div class="si-name' + (isDone ? ' done' : '') + '">' + e.station.name + '</div>' +
+        '<div class="si-addr">' + e.station.origAddr + '</div>' +
+        noteEl +
+      '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>
