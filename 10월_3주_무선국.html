@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>10월 3주 무선국 - 무선국 지도</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+    #header {
+      background: linear-gradient(135deg,#1a237e,#3949ab);
+      color:white; padding:12px 16px;
+      display:flex; align-items:center; gap:10px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.3);
+    }
+    #header h1 { font-size:16px; font-weight:bold; flex:1; }
+    #progress-badge {
+      background:rgba(255,255,255,0.2);
+      border-radius:12px; padding:3px 10px; font-size:12px; white-space:nowrap;
+    }
+    #toolbar {
+      background:white; padding:8px 12px;
+      display:flex; gap:8px; align-items:center;
+      border-bottom:1px solid #e0e0e0;
+    }
+    #search-input {
+      flex:1; padding:8px 14px;
+      border:1.5px solid #c5cae9; border-radius:20px;
+      font-size:14px; outline:none;
+    }
+    #search-input:focus { border-color:#3949ab; }
+    #btn-fit {
+      background:#3949ab; color:white; border:none;
+      border-radius:16px; padding:8px 12px;
+      font-size:13px; cursor:pointer; white-space:nowrap;
+    }
+    #app-container { display:flex; height:calc(100vh - 108px); }
+    #map { flex:1; height:100%; }
+    #side-panel {
+      width:300px; background:white;
+      border-left:1px solid #e0e0e0;
+      overflow-y:auto; display:flex; flex-direction:column;
+    }
+    .side-header {
+      padding:10px 14px; background:#e8eaf6;
+      font-size:12px; font-weight:bold; color:#3949ab;
+      position:sticky; top:0; z-index:1;
+    }
+    .side-item {
+      padding:10px 14px; border-bottom:1px solid #f0f0f0;
+      cursor:pointer; transition:background 0.15s;
+      display:flex; align-items:flex-start; gap:8px;
+    }
+    .side-item:hover { background:#e8eaf6; }
+    .side-item.done { background:#f1fdf4; }
+    .si-check { font-size:18px; padding-top:1px; }
+    .si-text { flex:1; }
+    .si-name { font-size:13px; font-weight:bold; color:#1a237e; word-break:break-all; }
+    .si-name.done { color:#888; text-decoration:line-through; }
+    .si-addr { font-size:11px; color:#888; margin-top:2px; }
+    .si-subs { font-size:11px; color:#5c6bc0; margin-top:3px; font-style:italic; }
+    @media(max-width:767px) {
+      #side-panel { display:none; }
+      #map { height:calc(100vh - 108px); width:100%; }
+    }
+    /* 팝업 스타일 */
+    .popup-name { font-size:13px; font-weight:bold; color:#1a237e; margin-bottom:3px; word-break:break-all; }
+    .popup-badge {
+      display:inline-block; font-size:10px; font-weight:bold;
+      padding:1px 6px; border-radius:8px; margin-bottom:6px;
+    }
+    .badge-rep { background:#e8eaf6; color:#3949ab; }
+    .badge-solo { background:#e8f5e9; color:#2e7d32; }
+    .popup-addr { font-size:12px; color:#555; margin-bottom:6px; }
+    /* 서브 국소 메모 박스 */
+    .popup-subs {
+      background:#f3f4ff;
+      border-left:3px solid #3949ab;
+      border-radius:0 6px 6px 0;
+      padding:7px 10px;
+      margin-bottom:8px;
+    }
+    .popup-subs-title {
+      font-size:11px; font-weight:bold; color:#3949ab; margin-bottom:4px;
+    }
+    .popup-sub-item {
+      font-size:11px; color:#333; padding:2px 0;
+      border-bottom:1px solid #e0e3ff;
+      word-break:break-all;
+    }
+    .popup-sub-item:last-child { border-bottom:none; }
+    .popup-btns { display:flex; gap:6px; flex-wrap:wrap; }
+    .popup-btn {
+      flex:1; padding:7px 4px; border-radius:6px;
+      font-size:12px; font-weight:bold;
+      text-decoration:none; text-align:center; display:block;
+      cursor:pointer; border:none;
+    }
+    .btn-nav { background:#FFCD00; color:#333; }
+    .btn-view { background:#1a237e; color:white; }
+    .btn-done { background:#2e7d32; color:white; width:100%; margin-top:4px; }
+    .btn-undone { background:#e0e0e0; color:#555; width:100%; margin-top:4px; }
+  </style>
+</head>
+<body>
+<div id="header">
+  <span style="font-size:18px">📡</span>
+  <h1>10월 3주 무선국</h1>
+  <a href="./index.html" style="color:rgba(255,255,255,0.8);text-decoration:none;font-size:13px;white-space:nowrap;">← 목록</a>
+  <div id="progress-badge">완료 0/50</div>
+</div>
+<div id="toolbar">
+  <input id="search-input" type="search" placeholder="호출명칭 또는 주소 검색..." oninput="filterMarkers(this.value)">
+  <button id="btn-fit" onclick="fitAll()">전체보기</button>
+</div>
+<div id="app-container">
+  <div id="map"></div>
+  <div id="side-panel">
+    <div class="side-header" id="side-header">목록 (50)</div>
+    <div id="side-list"></div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+var STATIONS = [{"name": "SKL진주일동미라주IB_LIRO_F1", "lat": 35.1835454780249, "lng": 128.088150815532, "origAddr": "진주시 강남동 387 진주일동미라주", "type": "대표", "subs": [{"name": "SKL진주일동미라주IB_LIRO_F2", "origAddr": "진주시 강남동 387 진주일동미라주"}]}, {"name": "SKG진주계동하얀메디컬IB_PRU_1", "lat": 35.1972598117074, "lng": 128.081161185973, "origAddr": "진주시 계동 38 일반건물", "type": "대표", "subs": [{"name": "SKL진주계동하얀메디컬IB_LIRO_F1", "origAddr": "진주시 계동 38 진주계동하얀메디컬"}, {"name": "SKL진주계동하얀메디컬IB_LIRO_F2", "origAddr": "진주시 계동 38 진주계동하얀메디컬"}, {"name": "SKL진주계동하얀메디컬IB_LIRO_F3", "origAddr": "진주시 계동 38 진주계동하얀메디컬"}, {"name": "SK진주계동하얀메디컬IB_WIRO", "origAddr": "진주시 계동 38 진주계동하얀메디컬"}]}, {"name": "SK송백리FDW", "lat": 35.197414275785, "lng": 128.137359416398, "origAddr": "진주시 금산면 송백리 416-3", "type": "단독", "subs": []}, {"name": "SKG진주남성4AAU1_2", "lat": 35.1874256525977, "lng": 128.074241633317, "origAddr": "진주시 남성동 274-23 일반", "type": "단독", "subs": []}, {"name": "공동망_SKG삼곡터널PRU_1_3", "lat": 35.1525216112065, "lng": 128.163540830987, "origAddr": "진주시 문산읍  이곡리 산 133-3 KTX경전_삼곡터널", "type": "대표", "subs": [{"name": "공동망_SKG진주삼곡터널AAU1_2", "origAddr": "진주시 문산읍 삼곡리  275-2 나대지"}]}, {"name": "SK진주상문W", "lat": 35.1909021673419, "lng": 128.195144054039, "origAddr": "진주시 문산읍 상문리 325-1, (상문리)", "type": "단독", "subs": []}, {"name": "공동망_SKG남해_진주터널AAU1_2", "lat": 35.1803629640541, "lng": 128.193103228469, "origAddr": "진주시 문산읍 상문리 산188 나대지", "type": "대표", "subs": [{"name": "SKL진주터널LRRU_F1", "origAddr": "진주시 문산읍 상문리 산188 나대지"}, {"name": "SKL진주터널LRRU_F2", "origAddr": "진주시 문산읍 상문리 산188 나대지"}, {"name": "SKT진주터널WDMC", "origAddr": "진주시 문산읍 상문리 산188 나대지"}]}, {"name": "공동망2_SKG진주소문AAU1_2", "lat": 35.1760499107519, "lng": 128.157005333208, "origAddr": "진주시 문산읍 소문리 419, 나들목주유소  (소문리)", "type": "단독", "subs": []}, {"name": "공동망_SKG저동터널PRU_1_2", "lat": 35.1846942299644, "lng": 128.300619739187, "origAddr": "진주시 사봉면 부계리 산 252-5 KTX경전_저동터널", "type": "단독", "subs": []}, {"name": "공동망_SKG화광터널PRU_1_2", "lat": 35.2074641174806, "lng": 128.316001146427, "origAddr": "진주시 사봉면 부계리 산 75-3 KTX경전_화광터널", "type": "단독", "subs": []}, {"name": "공동망_SKG부계터널PRU_1_3", "lat": 35.1881803080226, "lng": 128.303039856739, "origAddr": "진주시 사봉면 부계리 산240-4 KTX경전_부계터널", "type": "단독", "subs": []}, {"name": "SKG진주상대광원빌딩AAU1_2", "lat": 35.1882922660946, "lng": 128.115716216619, "origAddr": "진주시 상대동 179-10, 광원빌딩  (상대동)", "type": "단독", "subs": []}, {"name": "SKG진주상대11AAU1_3", "lat": 35.1879106587066, "lng": 128.11925165432, "origAddr": "진주시 상대동 182-13 일반", "type": "단독", "subs": []}, {"name": "SKG진주동일스위트AAU1_2", "lat": 35.1738629388893, "lng": 128.10298143591, "origAddr": "진주시 상평동 1068-1, (상평동, 상평동동일스위트아파트)", "type": "단독", "subs": []}, {"name": "SKL진주상평22LTRO", "lat": 35.1729641772573, "lng": 128.112401310027, "origAddr": "진주시 상평동 213-1 현대엔시", "type": "대표", "subs": [{"name": "SKL진주상평22LTROM", "origAddr": "진주시 상평동 213-1 현대엔시"}]}, {"name": "SKG진주상평삼성에코빌AAU1_2", "lat": 35.1774870722494, "lng": 128.106774890096, "origAddr": "진주시 상평동 270-8, (상평동, 삼삼에코빌)", "type": "단독", "subs": []}, {"name": "SKG진주상평동명빌AAU1_2", "lat": 35.1739138017418, "lng": 128.100669726958, "origAddr": "진주시 상평동 277-29, 동명빌  (상평동)", "type": "단독", "subs": []}, {"name": "SKG진주장재4AAU_1", "lat": 35.2171138707487, "lng": 128.095418628055, "origAddr": "진주시 장재동 1419 나대지", "type": "대표", "subs": [{"name": "SKL진주장재4LTRO", "origAddr": "진주시 장재동 1419 나대지"}, {"name": "SKL진주장재4LTROM", "origAddr": "진주시 장재동 1419 나대지"}, {"name": "SK진주장재4WTRO", "origAddr": "진주시 장재동 1419 나대지"}]}, {"name": "SKL진주장재노인복지 RU", "lat": 35.2060013179111, "lng": 128.090268608142, "origAddr": "진주시 장재동 998-2", "type": "대표", "subs": [{"name": "SKG진주장재노인복지AAU_1", "origAddr": "진주시 장재동 998-2, 나대지  (장재동)"}]}, {"name": "SKT진주정촌WMC", "lat": 35.1383577464132, "lng": 128.137114777866, "origAddr": "진주시 정촌면 관봉리 산276-2 나대지", "type": "단독", "subs": []}, {"name": "SKL진주대축3RUM", "lat": 35.1320062784149, "lng": 128.089422683971, "origAddr": "진주시 정촌면 대축리 460-9 대방마을경노당", "type": "단독", "subs": []}, {"name": "SK진주소곡2WMC", "lat": 35.1271620926219, "lng": 128.131291164355, "origAddr": "진주시 정촌면 소곡리 432번지", "type": "단독", "subs": []}, {"name": "SK화개리3FDW", "lat": 35.1312403131827, "lng": 128.102798862779, "origAddr": "진주시 정촌면 화개리 산 180-2번지", "type": "단독", "subs": []}, {"name": "공동망_SKG대통_진주JCAAU1_2", "lat": 35.1388428798645, "lng": 128.095211526909, "origAddr": "진주시 정촌면 화개리 산254-8 나대지", "type": "단독", "subs": []}, {"name": "SK진주천곡2WIC", "lat": 35.1829590433637, "lng": 128.241520780882, "origAddr": "진주시 진성면 천곡리 1059", "type": "단독", "subs": []}, {"name": "SK진주대암2WMC", "lat": 35.2597091085653, "lng": 128.076340512229, "origAddr": "진주시 집현면 대암리 773", "type": "단독", "subs": []}, {"name": "SKL진주덕오2LRRU_F4(20)", "lat": 35.243716673446, "lng": 128.13215601128, "origAddr": "진주시 집현면 덕오리 1613-108", "type": "단독", "subs": []}, {"name": "SKG진주경남서부보훈지청도로변AAU1_2", "lat": 35.2124120181059, "lng": 128.116049226692, "origAddr": "진주시 초전동 1100-1 나대지", "type": "단독", "subs": []}, {"name": "SKG진주초전스마트빌AAU1_2", "lat": 35.2083236265212, "lng": 128.112772391944, "origAddr": "진주시 초전동 1632-1, 스마트빌  (초전동)", "type": "단독", "subs": []}, {"name": "SKG진주초전푸르지오105동AAU1_2", "lat": 35.2045090788511, "lng": 128.112909220931, "origAddr": "진주시 초전동 1640-1 105동초전대우푸르지오1차", "type": "단독", "subs": []}, {"name": "SKG진주초전푸르지오106동AAU1_2", "lat": 35.2045090788511, "lng": 128.112909220931, "origAddr": "진주시 초전동 1640-1, 106동  (초전동, 초전대우푸르지오1차)", "type": "단독", "subs": []}, {"name": "SKL진주초전힐스테이트IB_LIRO_F1", "lat": 35.2133931592775, "lng": 128.105618680798, "origAddr": "진주시 초전동 1665 진주초전힐스테이트", "type": "대표", "subs": [{"name": "SKL진주초전힐스테이트IB_LIRO_F2", "origAddr": "진주시 초전동 1665 진주초전힐스테이트"}, {"name": "SKL진주초전힐스테이트IB_LIRO_F3", "origAddr": "진주시 초전동 1665 진주초전힐스테이트"}, {"name": "SK진주초전힐스테이트IB_WIRO", "origAddr": "진주시 초전동 1665 진주초전힐스테이트"}]}, {"name": "SKG진주초전해모로202가로등AAU_1", "lat": 35.2148142385427, "lng": 128.107855738916, "origAddr": "진주시 초전동 1667 202동초전해모로루비채2단지", "type": "단독", "subs": []}, {"name": "SKG진주초전해모로206가로등AAU_1", "lat": 35.2148142385427, "lng": 128.107855738916, "origAddr": "진주시 초전동 1667 206동초전해모로루비채2단지", "type": "단독", "subs": []}, {"name": "SKG진주초전이지더원502가로등AAU_1", "lat": 35.2104059017164, "lng": 128.109992427591, "origAddr": "진주시 초전동 1673 502동이지더원아파트", "type": "단독", "subs": []}, {"name": "SKG진주초전이지더원504가로등AAU_1", "lat": 35.2104059017164, "lng": 128.109992427591, "origAddr": "진주시 초전동 1673 504동이지더원아파트", "type": "단독", "subs": []}, {"name": "SKG진주초전11AAU1_2", "lat": 35.2089498164587, "lng": 128.11140197522, "origAddr": "진주시 초전동 1685-5, 일반  (초전동)", "type": "단독", "subs": []}, {"name": "SKG진주초전푸르지오AAU_1", "lat": 35.2091610784778, "lng": 128.108531616936, "origAddr": "진주시 초전동 산8-2 나대지", "type": "단독", "subs": []}, {"name": "SKL충무공동라온프라이빗SIB_LIRO_F2", "lat": 35.1763853613428, "lng": 128.14476163917, "origAddr": "진주시 충무공동 287-7 진주충무공동라온프라이빗시티S", "type": "대표", "subs": [{"name": "SKL충무공동라온프라이빗SIB_LIRO_F3", "origAddr": "진주시 충무공동 287-7 진주충무공동라온프라이빗시티S"}, {"name": "SK충무공동라온프라이빗SIB_WIRO", "origAddr": "진주시 충무공동 287-7 진주충무공동라온프라이빗시티S"}]}, {"name": "SK주중흥센트럴시티2단지IB_LRRU_FW", "lat": 35.1734205422219, "lng": 128.143321301045, "origAddr": "진주시 충무공동 293 주중흥센트럴시티2단지", "type": "대표", "subs": [{"name": "SKL주중흥센트럴시티2단지IB_LRRU_FW2", "origAddr": "진주시 충무공동 293 주중흥센트럴시티2단지"}, {"name": "SKL주중흥센트럴시티2단지IB_LRRU_FW3", "origAddr": "진주시 충무공동 293 주중흥센트럴시티2단지"}]}, {"name": "SK진주중흥센트럴시티4단지IB_LRRU_FW", "lat": 35.1744696451128, "lng": 128.145839828354, "origAddr": "진주시 충무공동 295 진주중흥센트럴시티4단지", "type": "대표", "subs": [{"name": "SKL진주중흥센트럴시티4단지IB_LRRU_FW3", "origAddr": "진주시 충무공동 295 진주중흥센트럴시티4단지"}]}, {"name": "SK진주중흥센트럴시티3단지IB_LRRU_FW", "lat": 35.1735202446846, "lng": 128.145103354125, "origAddr": "진주시 충무공동 298 진주중흥센트럴시티3단지", "type": "대표", "subs": [{"name": "SKL진주중흥센트럴시티3단지IB_LRRU_FW2", "origAddr": "진주시 충무공동 298 진주중흥센트럴시티3단지"}, {"name": "SKL진주중흥센트럴시티3단지IB_LRRU_FW3", "origAddr": "진주시 충무공동 298 진주중흥센트럴시티3단지"}]}, {"name": "SKL진주혁신LH9단지LTRO", "lat": 35.1710157170868, "lng": 128.143672905951, "origAddr": "진주시 충무공동 305", "type": "대표", "subs": [{"name": "SKL진주혁신LH9단지LTROM", "origAddr": "진주시 충무공동 305"}, {"name": "SK진주혁신LH9단지WTRO", "origAddr": "진주시 충무공동 305"}]}, {"name": "SKL진주혁신노블프라자LTRO", "lat": 35.1725132904951, "lng": 128.149027002241, "origAddr": "진주시 충무공동 331-5 노블플라자", "type": "대표", "subs": [{"name": "SKL진주혁신노블프라자LTROM", "origAddr": "진주시 충무공동 331-5 노블플라자"}, {"name": "SK진주혁신노블프라자WTRO", "origAddr": "진주시 충무공동 331-5, 노블프라자  (충무공동)"}]}, {"name": "SKG진주LH본사합숙소AAU_1", "lat": 35.1730692082022, "lng": 128.151580000178, "origAddr": "진주시 충무공동 348-1, LH본사합숙소 104동  (충무공동)", "type": "대표", "subs": [{"name": "SKG진주LH본사합숙소2AAU_1", "origAddr": "진주시 충무공동 348-1, 일반  (충무공동)"}]}, {"name": "SKG진주골든호텔AAU1_3", "lat": 35.177802278304, "lng": 128.140320188276, "origAddr": "진주시 충무공동 40-9, 골든호텔  (충무공동)", "type": "단독", "subs": []}, {"name": "SKL드림IT밸리지식산업센터IB_LIRO_F1", "lat": 35.1669155332916, "lng": 128.132719362106, "origAddr": "진주시 충무공동 87-23 진주충무공동드림IT밸리지식산업센터", "type": "대표", "subs": [{"name": "SKL드림IT밸리지식산업센터IB_LIRO_F2", "origAddr": "진주시 충무공동 87-23 진주충무공동드림IT밸리지식산업센터"}, {"name": "SKL드림IT밸리지식산업센터IB_LIRO_F3", "origAddr": "진주시 충무공동 87-23 진주충무공동드림IT밸리지식산업센터"}, {"name": "SK드림IT밸리지식산업센터IB_WIRO", "origAddr": "진주시 충무공동 87-23 진주충무공동드림IT밸리지식산업센터"}]}, {"name": "SKG진주충무공동드림IT밸리AAU_1", "lat": 35.1669155332916, "lng": 128.132719362106, "origAddr": "진주시 충무공동 87-23, 드림IT밸리  (충무공동)", "type": "단독", "subs": []}, {"name": "SKG드림IT밸리지식산업센터IB_PRU_1_2", "lat": 35.1675162304868, "lng": 128.130492757157, "origAddr": "진주시 충무공동 87-23, 드림IT밸리지식산업센터  (충무공동)", "type": "단독", "subs": []}, {"name": "SKL진주충무공동중흥S클래스IB_LIRO_F2", "lat": 35.1686567380118, "lng": 128.134714170976, "origAddr": "진주시 충무공동 90 진주충무공동중흥S클래스", "type": "대표", "subs": [{"name": "SK진주충무공동중흥S클래스IB_WIRO", "origAddr": "진주시 충무공동 90 진주충무공동중흥S클래스"}]}];
+var STORAGE_KEY = 'done_10월_3주_무선국';
+var total = STATIONS.length;
+
+var map = L.map('map').setView([35.18543, 128.13538], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© OpenStreetMap contributors', maxZoom: 19
+}).addTo(map);
+
+function makeIcon(done, type) {
+  var bg = done ? '#2e7d32' : (type === '대표' ? '#283593' : '#1a237e');
+  var emoji = done ? '✅' : '📡';
+  var size = type === '대표' ? 32 : 28;
+  return L.divIcon({
+    className: '',
+    html: '<div style="background:' + bg + ';color:white;border-radius:50%;width:' + size + 'px;height:' + size + 'px;display:flex;align-items:center;justify-content:center;font-size:' + (size-14) + 'px;box-shadow:0 2px 6px rgba(0,0,0,0.4);border:2px solid white;">' + emoji + '</div>',
+    iconSize:[size,size], iconAnchor:[size/2,size/2], popupAnchor:[0,-size/2]
+  });
+}
+
+var doneSet = {};
+try { doneSet = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch(e) {}
+
+function saveDone() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(doneSet)); } catch(e) {}
+  updateProgress();
+}
+
+function updateProgress() {
+  var cnt = Object.keys(doneSet).filter(function(k){ return doneSet[k]; }).length;
+  document.getElementById('progress-badge').textContent = '완료 ' + cnt + '/' + total;
+}
+
+var markers = [];
+
+STATIONS.forEach(function(s, idx) {
+  var done = !!doneSet[idx];
+  var m = L.marker([s.lat, s.lng], {icon: makeIcon(done, s.type)}).addTo(map);
+
+  function buildPopup() {
+    var isDone = !!doneSet[idx];
+    var enc = encodeURIComponent(s.name);
+    var navUrl = 'https://map.kakao.com/link/to/' + enc + ',' + s.lat + ',' + s.lng;
+    var viewUrl = 'https://map.kakao.com/link/map/' + enc + ',' + s.lat + ',' + s.lng;
+
+    // 배지
+    var badge = s.type === '대표'
+      ? '<span class="popup-badge badge-rep">대표</span>'
+      : (s.type === '단독' ? '<span class="popup-badge badge-solo">단독</span>' : '');
+
+    // 서브 국소 메모 박스 (대표일 때만)
+    var subsHtml = '';
+    if (s.subs && s.subs.length > 0) {
+      var items = s.subs.map(function(sub) {
+        return '<div class="popup-sub-item">📶 ' + sub.name + '</div>';
+      }).join('');
+      subsHtml = '<div class="popup-subs">' +
+        '<div class="popup-subs-title">🔗 함께 수검할 서브 국소 (' + s.subs.length + '개)</div>' +
+        items + '</div>';
+    }
+
+    var doneBtn = isDone
+      ? '<button class="popup-btn btn-undone" onclick="toggleDone(' + idx + ')">↩️ 완료 취소</button>'
+      : '<button class="popup-btn btn-done" onclick="toggleDone(' + idx + ')">✅ 완료</button>';
+
+    return '<div class="popup-name">' + (isDone ? '✅ ' : '📡 ') + s.name + '</div>' +
+      badge +
+      '<div class="popup-addr">📌 ' + s.origAddr + '</div>' +
+      subsHtml +
+      '<div class="popup-btns">' +
+      '<a class="popup-btn btn-nav" href="' + navUrl + '" target="_blank">🚗 경로안내</a>' +
+      '<a class="popup-btn btn-view" href="' + viewUrl + '" target="_blank">🗺️ 지도보기</a>' +
+      '</div>' + doneBtn;
+  }
+
+  m.bindPopup(buildPopup, {maxWidth:290});
+  markers.push({marker:m, station:s, visible:true, idx:idx});
+});
+
+window.toggleDone = function(idx) {
+  doneSet[idx] = !doneSet[idx];
+  saveDone();
+  var e = markers[idx];
+  e.marker.setIcon(makeIcon(!!doneSet[idx], e.station.type));
+  e.marker.openPopup();
+  renderSideList(markers.filter(function(x){ return x.visible; }));
+};
+
+updateProgress();
+
+function fitAll() {
+  var v = markers.filter(function(e){ return e.visible; });
+  if (!v.length) return;
+  map.fitBounds(L.featureGroup(v.map(function(e){ return e.marker; })).getBounds().pad(0.1));
+}
+fitAll();
+
+function filterMarkers(kw) {
+  kw = kw.trim().toLowerCase();
+  var shown = [];
+  markers.forEach(function(e) {
+    var subMatch = e.station.subs && e.station.subs.some(function(sub) {
+      return sub.name.toLowerCase().indexOf(kw) >= 0;
+    });
+    var m = !kw
+      || e.station.name.toLowerCase().indexOf(kw) >= 0
+      || e.station.origAddr.toLowerCase().indexOf(kw) >= 0
+      || subMatch;
+    e.visible = m;
+    if (m) { e.marker.addTo(map); shown.push(e); } else map.removeLayer(e.marker);
+  });
+  renderSideList(shown);
+  if (kw && shown.length) fitAll();
+}
+
+function renderSideList(list) {
+  document.getElementById('side-header').textContent = '목록 (' + list.length + ')';
+  var sl = document.getElementById('side-list');
+  sl.innerHTML = '';
+  list.forEach(function(e) {
+    var isDone = !!doneSet[e.idx];
+    var d = document.createElement('div');
+    d.className = 'side-item' + (isDone ? ' done' : '');
+    var subsInfo = (e.station.subs && e.station.subs.length > 0)
+      ? '<div class="si-subs">🔗 서브 ' + e.station.subs.length + '개 포함</div>'
+      : '';
+    d.innerHTML =
+      '<div class="si-check">' + (isDone ? '✅' : '⬜') + '</div>' +
+      '<div class="si-text">' +
+        '<div class="si-name' + (isDone ? ' done' : '') + '">' + e.station.name + '</div>' +
+        '<div class="si-addr">' + e.station.origAddr + '</div>' +
+        subsInfo +
+      '</div>';
+    d.onclick = function() { map.setView([e.station.lat, e.station.lng], 17); e.marker.openPopup(); };
+    sl.appendChild(d);
+  });
+}
+renderSideList(markers);
+</script>
+</body>
+</html>
